@@ -1,0 +1,49 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+
+jobs:
+  validate-and-build:
+    name: Typecheck, Lint, Test, Audit & Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: TypeScript Typecheck
+        run: npm run typecheck
+
+      - name: Lint Codebase
+        run: npm run lint
+
+      - name: Run Production Test Suite
+        run: npm run test
+
+      - name: Run WCAG Accessibility Tests
+        run: npm run test:a11y
+
+      - name: Run Metadata & First-Render Tests
+        run: npm run test:metadata
+
+      - name: Security Audit (Production Dependencies)
+        run: npm run audit
+
+      - name: Build Application Bundle
+        run: npm run build
+        env:
+          NODE_ENV: production

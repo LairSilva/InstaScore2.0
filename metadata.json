@@ -1,0 +1,8 @@
+{
+  "name": "InstaScore.ai",
+  "description": "AI consultant providing structural Instagram audits, performance scores, and strategic action plans through multimodal screenshot analysis.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

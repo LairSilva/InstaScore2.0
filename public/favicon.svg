@@ -1,0 +1,27 @@
+<svg width="64" height="64" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="is-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF5E36" />
+      <stop offset="45%" stop-color="#E1306C" />
+      <stop offset="100%" stop-color="#833AB4" />
+    </linearGradient>
+    <linearGradient id="is-stroke" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF7A00" />
+      <stop offset="50%" stop-color="#FA26A0" />
+      <stop offset="100%" stop-color="#38BDF8" />
+    </linearGradient>
+    <linearGradient id="is-trend" x1="20%" y1="80%" x2="90%" y2="20%">
+      <stop offset="0%" stop-color="#FA26A0" />
+      <stop offset="50%" stop-color="#A855F7" />
+      <stop offset="100%" stop-color="#38BDF8" />
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="92" height="92" rx="24" fill="#0B0716" stroke="url(#is-stroke)" stroke-width="3" />
+  <rect x="28" y="28" width="10" height="36" rx="5" fill="#FFFFFF" />
+  <path d="M 45 33 C 45 29.5, 62 29.5, 62 36 C 62 42.5, 43 41.5, 43 51 C 43 60.5, 64 60.5, 64 55" stroke="url(#is-grad)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+  <path d="M 46 72 L 58 64 L 69 56 L 82 40 L 88 32" stroke="url(#is-trend)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+  <circle cx="46" cy="72" r="2.5" fill="#FFFFFF" />
+  <circle cx="58" cy="64" r="2.5" fill="#FFFFFF" />
+  <circle cx="69" cy="56" r="2.5" fill="#FFFFFF" />
+  <circle cx="82" cy="40" r="2.5" fill="#FFFFFF" />
+</svg>

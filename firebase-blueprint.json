@@ -1,0 +1,282 @@
+{
+  "entities": {
+    "Diagnosis": {
+      "title": "Diagnosis",
+      "description": "C.A.G.E. Audit Diagnosis Result",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "handle": { "type": "string", "maxLength": 100 },
+        "niche": { "type": "string", "maxLength": 100 },
+        "overallScore": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "retentionUntil": { "type": "number" }
+      },
+      "required": ["id", "userId", "handle", "overallScore"]
+    },
+    "StartProject": {
+      "title": "StartProject",
+      "description": "Começar do Zero Project Data",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "niche": { "type": "string", "maxLength": 100 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "retentionUntil": { "type": "number" }
+      },
+      "required": ["id", "userId"]
+    },
+    "DigitalTwin": {
+      "title": "DigitalTwin",
+      "description": "Digital Twin Profile and Metrics",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "handle": { "type": "string", "maxLength": 100 },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "retentionUntil": { "type": "number" }
+      },
+      "required": ["id", "userId", "handle"]
+    },
+    "ProfileDNA": {
+      "title": "ProfileDNA",
+      "description": "InstaScore V12 Strategic Profile DNA Structure",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "username": { "type": "string", "maxLength": 100 },
+        "niche": { "type": "string", "maxLength": 100 },
+        "positioning": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "retentionUntil": { "type": "number" }
+      },
+      "required": ["id", "userId", "username"]
+    },
+    "PerformanceRecord": {
+      "title": "PerformanceRecord",
+      "description": "Historical Post Performance Memory Record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "format": { "type": "string" },
+        "objective": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "retentionUntil": { "type": "number" }
+      },
+      "required": ["id", "userId"]
+    },
+    "Subscription": {
+      "title": "Subscription",
+      "description": "Durable User Subscription and Entitlement State",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "plan": { "type": "string", "enum": ["FREE", "PRO"] },
+        "status": { "type": "string" },
+        "cycle": { "type": "string", "enum": ["monthly", "annual"] },
+        "provider": { "type": "string" },
+        "subscriptionId": { "type": "string" },
+        "currentPeriodStart": { "type": "number" },
+        "currentPeriodEnd": { "type": "number" },
+        "cancelAtPeriodEnd": { "type": "boolean" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" },
+        "expiresAt": { "type": "number" },
+        "retentionUntil": { "type": "number" },
+        "schemaVersion": { "type": "number" }
+      },
+      "required": ["userId", "plan", "status", "createdAt", "updatedAt", "schemaVersion"]
+    },
+    "Usage": {
+      "title": "Usage",
+      "description": "Durable User Quota and Consumption State",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "diagnosesCount": { "type": "number" },
+        "aiGenerationsCount": { "type": "number" },
+        "dailyGenerationsCount": { "type": "number" },
+        "imageGenerationsCount": { "type": "number" },
+        "videoGenerationsCount": { "type": "number" },
+        "lastResetTimestamp": { "type": "number" },
+        "lastDailyResetTimestamp": { "type": "number" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" },
+        "retentionUntil": { "type": "number" },
+        "schemaVersion": { "type": "number" }
+      },
+      "required": ["userId", "diagnosesCount", "createdAt", "updatedAt", "schemaVersion"]
+    },
+    "CheckoutSession": {
+      "title": "CheckoutSession",
+      "description": "Durable Payment Checkout Session State",
+      "type": "object",
+      "properties": {
+        "sessionId": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "planId": { "type": "string" },
+        "cycle": { "type": "string" },
+        "amount": { "type": "number" },
+        "paymentMethod": { "type": "string" },
+        "status": { "type": "string" },
+        "provider": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" },
+        "expiresAt": { "type": "number" },
+        "retentionUntil": { "type": "number" },
+        "schemaVersion": { "type": "number" }
+      },
+      "required": ["sessionId", "userId", "amount", "status", "createdAt", "updatedAt", "schemaVersion"]
+    },
+    "WebhookEvent": {
+      "title": "WebhookEvent",
+      "description": "Durable Idempotent Server Webhook Event Execution Record",
+      "type": "object",
+      "properties": {
+        "eventId": { "type": "string", "maxLength": 128 },
+        "eventType": { "type": "string" },
+        "userId": { "type": "string", "maxLength": 128 },
+        "status": { "type": "string" },
+        "provider": { "type": "string" },
+        "processedAt": { "type": "number" },
+        "payload": { "type": "object" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" },
+        "retentionUntil": { "type": "number" },
+        "schemaVersion": { "type": "number" }
+      },
+      "required": ["eventId", "userId", "processedAt", "createdAt", "schemaVersion"]
+    },
+    "PaymentProcessed": {
+      "title": "PaymentProcessed",
+      "description": "Durable Payment Idempotency Record",
+      "type": "object",
+      "properties": {
+        "paymentId": { "type": "string", "maxLength": 128 },
+        "eventId": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "status": { "type": "string" },
+        "amount": { "type": "number" },
+        "processedAt": { "type": "number" },
+        "retentionUntil": { "type": "number" },
+        "schemaVersion": { "type": "number" }
+      },
+      "required": ["paymentId", "userId", "processedAt", "schemaVersion"]
+    },
+    "Feedback": {
+      "title": "Feedback",
+      "description": "User Solution Feedback Record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "solutionType": { "type": "string" },
+        "rating": { "type": "string", "enum": ["useful", "not_useful"] },
+        "comment": { "type": "string" },
+        "itemTitle": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" },
+        "retentionUntil": { "type": "number" },
+        "schemaVersion": { "type": "number" }
+      },
+      "required": ["id", "userId", "rating", "createdAt", "schemaVersion"]
+    },
+    "AiLog": {
+      "title": "AiLog",
+      "description": "Server-Side AI Model Observability Log",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "diagnosticId": { "type": "string" },
+        "userId": { "type": "string", "maxLength": 128 },
+        "action": { "type": "string" },
+        "modelUsed": { "type": "string" },
+        "durationMs": { "type": "number" },
+        "retries": { "type": "number" },
+        "fallbackUsed": { "type": "boolean" },
+        "inputTokens": { "type": "number" },
+        "outputTokens": { "type": "number" },
+        "estimatedCostUsd": { "type": "number" },
+        "estimatedCostBrl": { "type": "number" },
+        "timestamp": { "type": "number" },
+        "createdAt": { "type": "number" },
+        "retentionUntil": { "type": "number" },
+        "schemaVersion": { "type": "number" }
+      },
+      "required": ["id", "userId", "action", "modelUsed", "createdAt", "schemaVersion"]
+    },
+    "RateLimit": {
+      "title": "RateLimit",
+      "description": "Distributed Multi-Instance Rate Limiter Bucket",
+      "type": "object",
+      "properties": {
+        "key": { "type": "string", "maxLength": 128 },
+        "count": { "type": "number" },
+        "resetAt": { "type": "number" },
+        "updatedAt": { "type": "number" },
+        "retentionUntil": { "type": "number" }
+      },
+      "required": ["key", "count", "resetAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/diagnoses/{diagnosisId}": {
+      "schema": { "$ref": "#/entities/Diagnosis" },
+      "description": "Collection storing C.A.G.E. audits"
+    },
+    "/start_projects/{projectId}": {
+      "schema": { "$ref": "#/entities/StartProject" },
+      "description": "Collection storing Start Mode projects"
+    },
+    "/digital_twins/{twinId}": {
+      "schema": { "$ref": "#/entities/DigitalTwin" },
+      "description": "Collection storing Digital Twin states"
+    },
+    "/profile_dna/{dnaId}": {
+      "schema": { "$ref": "#/entities/ProfileDNA" },
+      "description": "Collection storing Strategic Profile DNA"
+    },
+    "/performance_memory/{recordId}": {
+      "schema": { "$ref": "#/entities/PerformanceRecord" },
+      "description": "Collection storing Performance Memory records"
+    },
+    "/subscriptions/{uid}": {
+      "schema": { "$ref": "#/entities/Subscription" },
+      "description": "Durable user subscription records"
+    },
+    "/usage/{uid}": {
+      "schema": { "$ref": "#/entities/Usage" },
+      "description": "Durable user quota tracking records"
+    },
+    "/checkout_sessions/{sessionId}": {
+      "schema": { "$ref": "#/entities/CheckoutSession" },
+      "description": "Durable checkout sessions"
+    },
+    "/webhook_events/{eventId}": {
+      "schema": { "$ref": "#/entities/WebhookEvent" },
+      "description": "Durable webhook idempotency store"
+    },
+    "/payments_processed/{paymentId}": {
+      "schema": { "$ref": "#/entities/PaymentProcessed" },
+      "description": "Durable processed payments idempotency store"
+    },
+    "/feedback/{feedbackId}": {
+      "schema": { "$ref": "#/entities/Feedback" },
+      "description": "Durable user feedback records"
+    },
+    "/ai_logs/{logId}": {
+      "schema": { "$ref": "#/entities/AiLog" },
+      "description": "Durable server AI observability logs"
+    },
+    "/rate_limits/{key}": {
+      "schema": { "$ref": "#/entities/RateLimit" },
+      "description": "Distributed multi-instance rate limit counters"
+    }
+  }
+}

@@ -1,0 +1,175 @@
+rules_version = '2';
+
+/**
+ * ============================================================================
+ * InstaScore.ai - Production Firestore Security Rules (Zero-Trust ABAC)
+ * ============================================================================
+ * 
+ * ARCHITECTURE & SECURITY GUARANTEES:
+ * 1. Default Deny: All paths are locked by default unless explicitly permitted.
+ * 2. Strict User Isolation: Diagnoses, Start Projects, Digital Twins, Profile DNA,
+ *    and Performance Memory documents can ONLY be read, created, updated, and deleted
+ *    by the authenticated owner (request.auth.uid == userId).
+ * 3. Public Read Removal: No public read access to any diagnostic, twin, or strategic data.
+ * 4. Immutable Identity: Clients cannot change or spoof the 'userId' field on update.
+ * 5. Server-Only Critical Collections:
+ *    - 'subscriptions' and 'usage': Read-only for authenticated owner (request.auth.uid == userId);
+ *      client-side writes are strictly FORBIDDEN (allow write: if false;).
+ *      All plan provisioning, checkout confirmations, status changes, and quota tracking
+ *      are executed server-side via the Firebase Admin SDK.
+ *    - 'webhook_events' and 'ai_logs': 100% blocked for client SDKs (allow read, write: if false;).
+ * 6. Administrative Backend Operations:
+ *    - The Node.js Express backend uses administrative credentials (Firebase Admin SDK),
+ *      which operates in privileged context and completely bypasses these client security rules.
+ */
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: Validates string format and size for document IDs (prevents ID injection attacks)
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Helper: Incoming payload
+    function incoming() {
+      return request.resource.data;
+    }
+
+    // Helper: Existing stored document
+    function existing() {
+      return resource.data;
+    }
+
+    // Helper: Authentication status
+    function isSignedIn() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    // Helper: Ownership verification for existing documents
+    function isOwner() {
+      return isSignedIn() && resource != null && resource.data.userId == request.auth.uid;
+    }
+
+    // ------------------------------------------------------------------------
+    // 0. Default Deny Catch-All
+    // ------------------------------------------------------------------------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ------------------------------------------------------------------------
+    // 1. Connection Health Check (Safe lightweight probe)
+    // ------------------------------------------------------------------------
+    match /test/{docId} {
+      allow read: if isValidId(docId);
+    }
+
+    // ------------------------------------------------------------------------
+    // 2. Diagnoses (C.A.G.E. Audits)
+    // ------------------------------------------------------------------------
+    match /diagnoses/{diagnosisId} {
+      allow read: if isValidId(diagnosisId) && isSignedIn() && existing().userId == request.auth.uid;
+      allow create: if isValidId(diagnosisId) && isSignedIn() && incoming().userId == request.auth.uid;
+      allow update: if isValidId(diagnosisId) && isSignedIn() && existing().userId == request.auth.uid && incoming().userId == existing().userId;
+      allow delete: if isValidId(diagnosisId) && isOwner();
+    }
+
+    // ------------------------------------------------------------------------
+    // 3. Start Projects (Começar do Zero)
+    // ------------------------------------------------------------------------
+    match /start_projects/{projectId} {
+      allow read: if isValidId(projectId) && isSignedIn() && existing().userId == request.auth.uid;
+      allow create: if isValidId(projectId) && isSignedIn() && incoming().userId == request.auth.uid;
+      allow update: if isValidId(projectId) && isSignedIn() && existing().userId == request.auth.uid && incoming().userId == existing().userId;
+      allow delete: if isValidId(projectId) && isOwner();
+    }
+
+    // ------------------------------------------------------------------------
+    // 4. Digital Twins
+    // ------------------------------------------------------------------------
+    match /digital_twins/{twinId} {
+      allow read: if isValidId(twinId) && isSignedIn() && existing().userId == request.auth.uid;
+      allow create: if isValidId(twinId) && isSignedIn() && incoming().userId == request.auth.uid;
+      allow update: if isValidId(twinId) && isSignedIn() && existing().userId == request.auth.uid && incoming().userId == existing().userId;
+      allow delete: if isValidId(twinId) && isOwner();
+    }
+
+    // ------------------------------------------------------------------------
+    // 5. Profile DNA (Strategic Brain)
+    // ------------------------------------------------------------------------
+    match /profile_dna/{dnaId} {
+      allow read: if isValidId(dnaId) && isSignedIn() && existing().userId == request.auth.uid;
+      allow create: if isValidId(dnaId) && isSignedIn() && incoming().userId == request.auth.uid;
+      allow update: if isValidId(dnaId) && isSignedIn() && existing().userId == request.auth.uid && incoming().userId == existing().userId;
+      allow delete: if isValidId(dnaId) && isOwner();
+    }
+
+    // ------------------------------------------------------------------------
+    // 6. Performance Memory (Historical Post Performance Records)
+    // ------------------------------------------------------------------------
+    match /performance_memory/{recordId} {
+      allow read: if isValidId(recordId) && isSignedIn() && existing().userId == request.auth.uid;
+      allow create: if isValidId(recordId) && isSignedIn() && incoming().userId == request.auth.uid;
+      allow update: if isValidId(recordId) && isSignedIn() && existing().userId == request.auth.uid && incoming().userId == existing().userId;
+      allow delete: if isValidId(recordId) && isOwner();
+    }
+
+    // ------------------------------------------------------------------------
+    // 7. Subscriptions (Server-Managed Billing State)
+    // Client can ONLY read their own subscription state.
+    // Client-side write/mutations (plan, status, provider, etc.) are strictly FORBIDDEN.
+    // ------------------------------------------------------------------------
+    match /subscriptions/{userId} {
+      allow read: if isValidId(userId) && isSignedIn() && request.auth.uid == userId;
+      allow write: if false;
+    }
+
+    // ------------------------------------------------------------------------
+    // 8. Usage & Quotas (Server-Managed Quota Counters)
+    // Client can ONLY read their own usage counters.
+    // Client-side write/mutations are strictly FORBIDDEN.
+    // ------------------------------------------------------------------------
+    match /usage/{userId} {
+      allow read: if isValidId(userId) && isSignedIn() && request.auth.uid == userId;
+      allow write: if false;
+    }
+
+    // ------------------------------------------------------------------------
+    // 9. Checkout Sessions (User can view their own session status)
+    // ------------------------------------------------------------------------
+    match /checkout_sessions/{sessionId} {
+      allow read: if isValidId(sessionId) && isSignedIn() && existing().userId == request.auth.uid;
+      allow write: if false;
+    }
+
+    // ------------------------------------------------------------------------
+    // 10. User Feedback (Authenticated users can submit feedback)
+    // ------------------------------------------------------------------------
+    match /feedback/{feedbackId} {
+      allow read: if isValidId(feedbackId) && isSignedIn() && existing().userId == request.auth.uid;
+      allow create: if isValidId(feedbackId) && isSignedIn() && incoming().userId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // ------------------------------------------------------------------------
+    // 11. Webhook Events, Processed Payments & AI Logs (100% Server-Only Collections)
+    // ------------------------------------------------------------------------
+    match /webhook_events/{eventId} {
+      allow read, write: if false;
+    }
+
+    match /payments_processed/{paymentId} {
+      allow read, write: if false;
+    }
+
+    match /ai_logs/{logId} {
+      allow read, write: if false;
+    }
+
+    match /rate_limits/{key} {
+      allow read, write: if false;
+    }
+  }
+}
+

@@ -1,0 +1,339 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Plus Jakarta Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --breakpoint-xs: 390px;
+}
+
+@layer base {
+  body {
+    background-color: #04050A;
+    color: #F1F5F9;
+    font-family: var(--font-sans);
+    overflow-x: hidden;
+    letter-spacing: -0.01em;
+  }
+
+  h1, h2, h3, .font-display {
+    font-family: var(--font-display);
+  }
+
+  ::selection {
+    background-color: #E1306C;
+    color: #ffffff;
+  }
+}
+
+/* Deep Space Background Canvas & Cinematic Auroras */
+.bg-deep-space {
+  background-color: #04050A;
+  background-image: 
+    radial-gradient(ellipse 80% 80% at 50% -20%, rgba(131, 58, 180, 0.18), rgba(255, 255, 255, 0)),
+    radial-gradient(ellipse 60% 60% at 10% 40%, rgba(225, 48, 108, 0.12), rgba(255, 255, 255, 0)),
+    radial-gradient(ellipse 60% 60% at 90% 70%, rgba(56, 189, 248, 0.1), rgba(255, 255, 255, 0));
+  background-attachment: fixed;
+}
+
+/* Subtle High-Tech Subtle Grid overlay */
+.bg-tech-grid {
+  background-size: 40px 40px;
+  background-image: 
+    linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+}
+
+/* Ultra Premium Glassmorphism Cards */
+.glass-panel {
+  background: rgba(13, 17, 30, 0.65);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 
+    0 20px 50px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.glass-panel-hover {
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-panel-hover:hover {
+  border-color: rgba(225, 48, 108, 0.35);
+  transform: translateY(-2px);
+  box-shadow: 
+    0 30px 60px rgba(0, 0, 0, 0.6),
+    0 0 30px rgba(225, 48, 108, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+/* C.A.G.E. Color Identity Cards */
+.cage-conversion {
+  background: linear-gradient(135deg, rgba(255, 94, 54, 0.08) 0%, rgba(225, 48, 108, 0.05) 100%);
+  border: 1px solid rgba(255, 94, 54, 0.3);
+  box-shadow: 0 0 25px rgba(255, 94, 54, 0.12);
+}
+
+.cage-authority {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.08) 0%, rgba(99, 102, 241, 0.05) 100%);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  box-shadow: 0 0 25px rgba(56, 189, 248, 0.12);
+}
+
+.cage-growth {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(5, 150, 105, 0.05) 100%);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  box-shadow: 0 0 25px rgba(16, 185, 129, 0.12);
+}
+
+.cage-expression {
+  background: linear-gradient(135deg, rgba(225, 48, 108, 0.08) 0%, rgba(192, 132, 252, 0.05) 100%);
+  border: 1px solid rgba(225, 48, 108, 0.3);
+  box-shadow: 0 0 25px rgba(225, 48, 108, 0.12);
+}
+
+/* Premium Apple/Linear Buttons */
+.btn-premium-primary {
+  background: linear-gradient(135deg, #FF5E36 0%, #E1306C 50%, #833AB4 100%);
+  color: #FFFFFF;
+  font-weight: 700;
+  border-radius: 14px;
+  box-shadow: 0 0 25px rgba(225, 48, 108, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn-premium-primary:hover {
+  transform: translateY(-1px) scale(1.02);
+  box-shadow: 0 0 35px rgba(225, 48, 108, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  opacity: 0.96;
+}
+
+.btn-premium-secondary {
+  background: rgba(18, 24, 40, 0.8);
+  backdrop-filter: blur(12px);
+  color: #E2E8F0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-weight: 600;
+  border-radius: 14px;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn-premium-secondary:hover {
+  background: rgba(30, 41, 64, 0.9);
+  border-color: rgba(225, 48, 108, 0.4);
+  color: #FFFFFF;
+  transform: translateY(-1px);
+}
+
+/* Keyframe animations */
+@keyframes floatAurora {
+  0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.2; }
+  50% { transform: translate(-30px, 20px) scale(1.1); opacity: 0.35; }
+}
+
+@keyframes pulseHalo {
+  0%, 100% { transform: scale(1); opacity: 0.3; }
+  50% { transform: scale(1.08); opacity: 0.6; }
+}
+
+@keyframes scanline {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(1000%); }
+}
+
+.animate-aurora {
+  animation: floatAurora 12s ease-in-out infinite;
+}
+
+.animate-pulse-halo {
+  animation: pulseHalo 3.5s ease-in-out infinite;
+}
+
+.animate-scanline {
+  animation: scanline 8s linear infinite;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #04050A;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1E293B;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #E1306C;
+}
+
+/* ==========================================================================
+   WCAG 2.1 AA ACCESSIBILITY ENHANCEMENTS
+   ========================================================================== */
+
+/* 1. Global High-Contrast Focus Visible Ring for Keyboard Users */
+*:focus-visible {
+  outline: 2px solid #38BDF8 !important;
+  outline-offset: 2px !important;
+}
+
+/* Specific button focus states to ensure contrast */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid #38BDF8 !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.25) !important;
+}
+
+/* 2. Skip to Main Content Navigation Link for Screen Readers & Keyboard */
+.skip-link {
+  position: absolute;
+  top: -100px;
+  left: 1rem;
+  z-index: 9999;
+  padding: 0.75rem 1.25rem;
+  background-color: #0F172A;
+  color: #FFFFFF;
+  font-weight: 700;
+  border: 2px solid #38BDF8;
+  border-radius: 0.75rem;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  transition: top 0.2s ease-in-out;
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  top: 1rem;
+}
+
+/* 3. Screen Reader Only Utility */
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+/* 4. Prefers Reduced Motion Support (WCAG 2.2.2 & 2.3.3) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .animate-aurora,
+  .animate-pulse-halo,
+  .animate-scanline,
+  .animate-spin,
+  .animate-pulse,
+  .animate-bounce,
+  .animate-fade-in {
+    animation: none !important;
+    transform: none !important;
+  }
+}
+
+/* ==========================================================================
+   RESPONSIVE BREAKPOINT ENHANCEMENTS (360px, 390px, 768px, Desktop)
+   ========================================================================== */
+
+/* Universal mobile viewport overflow containment */
+html, body {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+/* Accessible Horizontal Scroll Tabs with subtle scrollbar indicators */
+.tabs-scroll-container {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(225, 48, 108, 0.4) transparent;
+}
+
+.tabs-scroll-container::-webkit-scrollbar {
+  height: 4px;
+}
+
+.tabs-scroll-container::-webkit-scrollbar-track {
+  background: rgba(8, 11, 20, 0.6);
+  border-radius: 9999px;
+}
+
+.tabs-scroll-container::-webkit-scrollbar-thumb {
+  background: rgba(225, 48, 108, 0.5);
+  border-radius: 9999px;
+}
+
+.tabs-scroll-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(225, 48, 108, 0.8);
+}
+
+/* 1. Ultra-Compact Mobile Breakpoint (360px - 389px) */
+@media (max-width: 389px) {
+  .glass-panel {
+    padding: 1rem !important;
+    border-radius: 1rem !important;
+  }
+
+  h1 {
+    font-size: 1.5rem !important;
+    line-height: 1.25 !important;
+  }
+
+  h2 {
+    font-size: 1.25rem !important;
+    line-height: 1.25 !important;
+  }
+
+  .btn-premium-primary,
+  .btn-premium-secondary {
+    width: 100%;
+    justify-content: center;
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+  }
+}
+
+/* 2. Standard Mobile Breakpoint (390px - 767px) */
+@media (min-width: 390px) and (max-width: 767px) {
+  .glass-panel {
+    padding: 1.25rem;
+  }
+}
+
+/* 3. Tablet Breakpoint (768px - 1023px) */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .glass-panel {
+    padding: 1.5rem;
+  }
+}
+
+/* 4. Desktop Breakpoint (1024px+) */
+@media (min-width: 1024px) {
+  .glass-panel {
+    padding: 2rem;
+  }
+}
+
+
+

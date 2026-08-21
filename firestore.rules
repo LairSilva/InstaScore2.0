@@ -46,9 +46,28 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid != null;
     }
 
+    // Helper: Checks if document is owned by user or is an unowned/legacy/anonymous document eligible for claiming
+    function canUserClaimOrUpdate() {
+      return isSignedIn() && (
+        resource == null || 
+        resource.data.userId == request.auth.uid ||
+        !(resource.data.userId is string) ||
+        resource.data.userId == '' ||
+        resource.data.userId == 'local_user' ||
+        resource.data.userId.matches('^anonymous_.*')
+      );
+    }
+
     // Helper: Ownership verification for existing documents
     function isOwner() {
-      return isSignedIn() && resource != null && resource.data.userId == request.auth.uid;
+      return isSignedIn() && (
+        resource == null || 
+        resource.data.userId == request.auth.uid ||
+        !(resource.data.userId is string) ||
+        resource.data.userId == '' ||
+        resource.data.userId == 'local_user' ||
+        resource.data.userId.matches('^anonymous_.*')
+      );
     }
 
     // ------------------------------------------------------------------------
@@ -69,9 +88,9 @@ service cloud.firestore {
     // 2. Diagnoses (C.A.G.E. Audits)
     // ------------------------------------------------------------------------
     match /diagnoses/{diagnosisId} {
-      allow read: if isValidId(diagnosisId) && isSignedIn() && existing().userId == request.auth.uid;
+      allow read: if isValidId(diagnosisId) && isSignedIn() && isOwner();
       allow create: if isValidId(diagnosisId) && isSignedIn() && incoming().userId == request.auth.uid;
-      allow update: if isValidId(diagnosisId) && isSignedIn() && existing().userId == request.auth.uid && incoming().userId == existing().userId;
+      allow update: if isValidId(diagnosisId) && isSignedIn() && canUserClaimOrUpdate() && incoming().userId == request.auth.uid;
       allow delete: if isValidId(diagnosisId) && isOwner();
     }
 
@@ -79,9 +98,9 @@ service cloud.firestore {
     // 3. Start Projects (Começar do Zero)
     // ------------------------------------------------------------------------
     match /start_projects/{projectId} {
-      allow read: if isValidId(projectId) && isSignedIn() && existing().userId == request.auth.uid;
+      allow read: if isValidId(projectId) && isSignedIn() && isOwner();
       allow create: if isValidId(projectId) && isSignedIn() && incoming().userId == request.auth.uid;
-      allow update: if isValidId(projectId) && isSignedIn() && existing().userId == request.auth.uid && incoming().userId == existing().userId;
+      allow update: if isValidId(projectId) && isSignedIn() && canUserClaimOrUpdate() && incoming().userId == request.auth.uid;
       allow delete: if isValidId(projectId) && isOwner();
     }
 
@@ -89,9 +108,9 @@ service cloud.firestore {
     // 4. Digital Twins
     // ------------------------------------------------------------------------
     match /digital_twins/{twinId} {
-      allow read: if isValidId(twinId) && isSignedIn() && existing().userId == request.auth.uid;
+      allow read: if isValidId(twinId) && isSignedIn() && isOwner();
       allow create: if isValidId(twinId) && isSignedIn() && incoming().userId == request.auth.uid;
-      allow update: if isValidId(twinId) && isSignedIn() && existing().userId == request.auth.uid && incoming().userId == existing().userId;
+      allow update: if isValidId(twinId) && isSignedIn() && canUserClaimOrUpdate() && incoming().userId == request.auth.uid;
       allow delete: if isValidId(twinId) && isOwner();
     }
 
@@ -99,9 +118,9 @@ service cloud.firestore {
     // 5. Profile DNA (Strategic Brain)
     // ------------------------------------------------------------------------
     match /profile_dna/{dnaId} {
-      allow read: if isValidId(dnaId) && isSignedIn() && existing().userId == request.auth.uid;
+      allow read: if isValidId(dnaId) && isSignedIn() && isOwner();
       allow create: if isValidId(dnaId) && isSignedIn() && incoming().userId == request.auth.uid;
-      allow update: if isValidId(dnaId) && isSignedIn() && existing().userId == request.auth.uid && incoming().userId == existing().userId;
+      allow update: if isValidId(dnaId) && isSignedIn() && canUserClaimOrUpdate() && incoming().userId == request.auth.uid;
       allow delete: if isValidId(dnaId) && isOwner();
     }
 
@@ -109,9 +128,9 @@ service cloud.firestore {
     // 6. Performance Memory (Historical Post Performance Records)
     // ------------------------------------------------------------------------
     match /performance_memory/{recordId} {
-      allow read: if isValidId(recordId) && isSignedIn() && existing().userId == request.auth.uid;
+      allow read: if isValidId(recordId) && isSignedIn() && isOwner();
       allow create: if isValidId(recordId) && isSignedIn() && incoming().userId == request.auth.uid;
-      allow update: if isValidId(recordId) && isSignedIn() && existing().userId == request.auth.uid && incoming().userId == existing().userId;
+      allow update: if isValidId(recordId) && isSignedIn() && canUserClaimOrUpdate() && incoming().userId == request.auth.uid;
       allow delete: if isValidId(recordId) && isOwner();
     }
 

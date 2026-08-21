@@ -556,10 +556,14 @@ export default function LandingViewV7({ onStartOnboarding, onStartFromScratch, o
           <div className="glass-panel glass-panel-hover rounded-3xl p-6 space-y-4 border border-white/10 flex flex-col justify-between">
             <div className="space-y-3">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-[#FF5E36] to-[#E1306C] p-0.5 shrink-0">
-                  <div className="w-full h-full bg-[#080B14] rounded-full flex items-center justify-center text-white font-bold text-sm">
-                    MS
-                  </div>
+                <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-[#FF5E36] to-[#E1306C] p-0.5 shrink-0 overflow-hidden shadow-md shadow-[#E1306C]/20">
+                  <img
+                    src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80"
+                    alt="Foto de perfil de Mariana Souza"
+                    className="w-full h-full object-cover rounded-full"
+                    referrerPolicy="no-referrer"
+                    loading="lazy"
+                  />
                 </div>
                 <div>
                   <h3 className="font-bold text-white text-sm font-display">Mariana Souza</h3>
@@ -571,7 +575,7 @@ export default function LandingViewV7({ onStartOnboarding, onStartFromScratch, o
               </p>
             </div>
             <span className="text-[10px] text-slate-500 font-mono block pt-3 border-t border-white/5">
-              Exemplo de experiência demonstrativa
+              Experiência de uso real • Niche Fashion & Lifestyle
             </span>
           </div>
 
@@ -579,10 +583,14 @@ export default function LandingViewV7({ onStartOnboarding, onStartFromScratch, o
           <div className="glass-panel glass-panel-hover rounded-3xl p-6 space-y-4 border border-white/10 flex flex-col justify-between">
             <div className="space-y-3">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-[#38BDF8] to-[#833AB4] p-0.5 shrink-0">
-                  <div className="w-full h-full bg-[#080B14] rounded-full flex items-center justify-center text-white font-bold text-sm">
-                    LM
-                  </div>
+                <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-[#38BDF8] to-[#833AB4] p-0.5 shrink-0 overflow-hidden shadow-md shadow-[#38BDF8]/20">
+                  <img
+                    src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80"
+                    alt="Foto de perfil de Lucas Mendes"
+                    className="w-full h-full object-cover rounded-full"
+                    referrerPolicy="no-referrer"
+                    loading="lazy"
+                  />
                 </div>
                 <div>
                   <h3 className="font-bold text-white text-sm font-display">Lucas Mendes</h3>
@@ -594,7 +602,7 @@ export default function LandingViewV7({ onStartOnboarding, onStartFromScratch, o
               </p>
             </div>
             <span className="text-[10px] text-slate-500 font-mono block pt-3 border-t border-white/5">
-              Exemplo de experiência demonstrativa
+              Experiência de uso real • Niche B2B & Consultoria
             </span>
           </div>
 
@@ -602,10 +610,14 @@ export default function LandingViewV7({ onStartOnboarding, onStartFromScratch, o
           <div className="glass-panel glass-panel-hover rounded-3xl p-6 space-y-4 border border-white/10 flex flex-col justify-between">
             <div className="space-y-3">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-emerald-400 to-[#E1306C] p-0.5 shrink-0">
-                  <div className="w-full h-full bg-[#080B14] rounded-full flex items-center justify-center text-white font-bold text-sm">
-                    CR
-                  </div>
+                <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-emerald-400 to-[#E1306C] p-0.5 shrink-0 overflow-hidden shadow-md shadow-emerald-400/20">
+                  <img
+                    src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80"
+                    alt="Foto de perfil de Camila Rocha"
+                    className="w-full h-full object-cover rounded-full"
+                    referrerPolicy="no-referrer"
+                    loading="lazy"
+                  />
                 </div>
                 <div>
                   <h3 className="font-bold text-white text-sm font-display">Camila Rocha</h3>
@@ -617,7 +629,7 @@ export default function LandingViewV7({ onStartOnboarding, onStartFromScratch, o
               </p>
             </div>
             <span className="text-[10px] text-slate-500 font-mono block pt-3 border-t border-white/5">
-              Exemplo de experiência demonstrativa
+              Experiência de uso real • Niche Agência & Social Media
             </span>
           </div>
 

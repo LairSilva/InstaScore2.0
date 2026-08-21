@@ -79,6 +79,18 @@ async function runBillingTests() {
   // --- 3. Test Webhook Processing with Idempotency & Sanitization ---
   console.log("\n--- 3. Testando Webhook Transacional, Idempotência e Sanitização ---");
   const eventId = `evt_test_${Date.now()}`;
+  const paymentId = `pay_test_${Date.now()}`;
+  const fixturePayment = {
+    id: paymentId,
+    status: "approved",
+    currency_id: "BRL",
+    transaction_amount: 39.90,
+    metadata: {
+      user_id: testUidPro,
+      plan_id: "PRO",
+      cycle: "monthly"
+    }
+  };
   const webhookPayload = {
     eventId,
     eventType: "payment.approved",
@@ -86,12 +98,14 @@ async function runBillingTests() {
     cycle: "monthly" as const,
     status: "approved",
     provider: "mercadopago" as const,
+    providerPaymentId: paymentId,
+    fixturePayment,
     payload: {
-      id: "pay_123456",
+      id: paymentId,
       token: "secret_mp_token_xyz", // Must be sanitized
       card_number: "4111111111111111", // Must be sanitized
       security_code: "123", // Must be sanitized
-      amount: 49.00,
+      amount: 39.90,
       description: "InstaScore PRO Mensal"
     }
   };
@@ -137,6 +151,7 @@ async function runBillingTests() {
   });
 
   assert("Checkout session criada com ID", Boolean(session.sessionId));
+  assert("Checkout session anual criada com valor oficial R$ 349,90", session.amount === 349.90);
   assert("Status inicial é pending", session.status === "pending");
   assert("PIX QR code gerado", Boolean(session.pixQrCodeText));
 

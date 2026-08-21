@@ -92,7 +92,9 @@ assert(parsedZod.success, "DiagnosisSchema valida payload completo e correto", p
 // ==========================================
 console.log("\n--- TESTE C: Planos, Entitlements e Quotas ---");
 assert(PLANS.FREE.priceMonthly === 0, "Plano FREE configurado com preço R$ 0");
-assert(PLANS.PRO.priceMonthly === 39.90, "Plano PRO configurado com preço R$ 39,90");
+assert(PLANS.PRO.priceMonthly === 39.90, "Plano PRO configurado com preço mensal R$ 39,90");
+assert(PLANS.PRO.priceAnnual === 349.90, "Plano PRO configurado com preço anual R$ 349,90");
+assert(PLANS.PRO.formattedPriceAnnual === "R$ 349,90/ano", "Plano PRO formatado com R$ 349,90/ano");
 assert(!hasEntitlement("FREE", "contentAi"), "Plano FREE bloqueia Content AI (Paywall exigido)");
 assert(hasEntitlement("PRO", "contentAi"), "Plano PRO libera Content AI");
 assert(hasEntitlement("PRO", "reelsGenerator"), "Plano PRO libera Gerador de Reels");
@@ -111,8 +113,16 @@ const session = await createCheckoutSessionServer({
   paymentMethod: "pix"
 });
 assert(Boolean(session.sessionId), "Criação de sessão de checkout funcional");
-assert(session.amount === 39.90, "Valor correto atribuído à sessão (R$ 39,90)");
+assert(session.amount === 39.90, "Valor correto atribuído à sessão mensal (R$ 39,90)");
 assert(Boolean(session.pixQrCodeText), "PIX Copia e Cola gerado com sucesso");
+
+const annualSession = await createCheckoutSessionServer({
+  userId: "user_audit_annual",
+  planId: "PRO",
+  cycle: "annual",
+  paymentMethod: "card"
+});
+assert(annualSession.amount === 349.90, "Valor correto atribuído à sessão anual (R$ 349,90)");
 
 // ==========================================
 // TEST E: START MODE GENERATOR ENGINE
@@ -132,7 +142,7 @@ assert(startResult.startScore > 0, "Calcula o Start Score inicial ponderado");
 // TEST F: AI MODEL ROUTER CONFIGURATION
 // ==========================================
 console.log("\n--- TESTE F: AI Model Router & Resilience ---");
-assert(AI_MODEL_ROUTER.primaryModel === "gemini-3.1-pro-preview", "AI Model Router configurado com gemini-3.1-pro-preview");
+assert(AI_MODEL_ROUTER.primaryModel === "gemini-3.7-flash", "AI Model Router configurado com gemini-3.7-flash");
 assert(AI_MODEL_ROUTER.requestTimeoutMs > 0, "Timeout de segurança configurado no Router");
 assert(AI_MODEL_ROUTER.fallbackModels.length > 0, "Modelos de fallback configurados no Router");
 

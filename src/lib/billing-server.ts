@@ -1072,12 +1072,16 @@ export async function createCheckoutSessionServer(params: {
 }): Promise<CheckoutSessionRecord> {
   const { userId, planId, cycle, paymentMethod, userEmail, appUrl } = params;
 
-  const isProd = process.env.NODE_ENV === 'production' || process.env.PAYMENT_ENVIRONMENT === 'production';
+  const isLiveProduction = process.env.PAYMENT_ENVIRONMENT === 'production';
+  const isSandbox = process.env.PAYMENT_ENVIRONMENT === 'sandbox' || !process.env.PAYMENT_ENVIRONMENT;
   const mpAccessToken = process.env.MERCADOPAGO_ACCESS_TOKEN;
 
-  // STRICT FAIL-CLOSED: In production, MERCADOPAGO_ACCESS_TOKEN is mandatory
-  if (isProd && !mpAccessToken) {
-    throw new Error('GATEWAY_CONFIGURATION_ERROR: MERCADOPAGO_ACCESS_TOKEN é obrigatório em ambiente de produção.');
+  // STRICT FAIL-CLOSED: In real live production, MERCADOPAGO_ACCESS_TOKEN is mandatory
+  if (isLiveProduction && !mpAccessToken) {
+    const configErr: any = new Error('GATEWAY_CONFIGURATION_ERROR: MERCADOPAGO_ACCESS_TOKEN é obrigatório em ambiente de produção.');
+    configErr.status = 503;
+    configErr.code = 'GATEWAY_CONFIG_MISSING';
+    throw configErr;
   }
 
   const selectedPlanConfig = getPlanConfig(planId);
@@ -1095,7 +1099,7 @@ export async function createCheckoutSessionServer(params: {
     amount,
     paymentMethod,
     status: 'pending',
-    provider: mpAccessToken ? 'mercadopago' : (isProd ? 'mercadopago' : 'pix_card_simulated'),
+    provider: mpAccessToken ? 'mercadopago' : (isLiveProduction ? 'mercadopago' : 'pix_card_simulated'),
     createdAt: now,
     updatedAt: now,
     expiresAt,
@@ -1133,15 +1137,22 @@ export async function createCheckoutSessionServer(params: {
           })
         });
 
-        const mpData = await mpRes.json();
+        const mpData = await mpRes.json().catch(() => ({}));
         if (mpRes.ok && mpData.point_of_interaction?.transaction_data) {
           const txData = mpData.point_of_interaction.transaction_data;
           checkoutRecord.providerPaymentId = String(mpData.id);
           checkoutRecord.pixQrCodeText = txData.qr_code;
           checkoutRecord.pixQrCodeBase64 = txData.qr_code_base64;
           checkoutRecord.checkoutUrl = txData.ticket_url;
-        } else if (isProd) {
-          throw new Error(`PIX_GENERATION_FAILED: Mercado Pago retornou status ${mpRes.status} ao gerar Pix oficial.`);
+        } else {
+          const errDetail = mpData?.message || mpData?.error || `Status HTTP ${mpRes.status}`;
+          const pixErr: any = new Error(`PIX_GENERATION_FAILED: ${errDetail}`);
+          pixErr.status = mpRes.status === 401 ? 401 : mpRes.status === 400 ? 400 : 503;
+          pixErr.code = mpRes.status === 401 ? 'GATEWAY_AUTH_ERROR' : mpRes.status === 400 ? 'GATEWAY_BAD_REQUEST' : 'PIX_GENERATION_FAILED';
+          pixErr.details = mpData;
+          if (isLiveProduction || mpAccessToken) {
+            throw pixErr;
+          }
         }
       } else {
         const prefRes = await fetch('https://api.mercadopago.com/checkout/preferences', {
@@ -1180,30 +1191,44 @@ export async function createCheckoutSessionServer(params: {
           })
         });
 
-        const prefData = await prefRes.json();
-        if (prefRes.ok) {
-          const isSandbox = process.env.PAYMENT_ENVIRONMENT === 'sandbox';
-          checkoutRecord.checkoutUrl = isSandbox ? prefData.sandbox_init_point : prefData.init_point;
+        const prefData = await prefRes.json().catch(() => ({}));
+        if (prefRes.ok && (prefData.init_point || prefData.sandbox_init_point)) {
+          checkoutRecord.checkoutUrl = (isSandbox && prefData.sandbox_init_point) 
+            ? prefData.sandbox_init_point 
+            : (prefData.init_point || prefData.sandbox_init_point);
           checkoutRecord.providerPaymentId = String(prefData.id);
-        } else if (isProd) {
-          throw new Error(`CARD_PREFERENCE_FAILED: Mercado Pago retornou status ${prefRes.status} ao criar preferência.`);
+        } else {
+          const errDetail = prefData?.message || prefData?.error || `Status HTTP ${prefRes.status}`;
+          const cardErr: any = new Error(`CARD_PREFERENCE_FAILED: ${errDetail}`);
+          cardErr.status = prefRes.status === 401 ? 401 : prefRes.status === 400 ? 400 : 503;
+          cardErr.code = prefRes.status === 401 ? 'GATEWAY_AUTH_ERROR' : prefRes.status === 400 ? 'GATEWAY_BAD_REQUEST' : 'CARD_PREFERENCE_FAILED';
+          cardErr.details = prefData;
+          if (isLiveProduction || mpAccessToken) {
+            throw cardErr;
+          }
         }
       }
     } catch (err: any) {
-      console.error('[MercadoPago API Exception]', err);
-      if (isProd) {
+      console.error(`[MercadoPago Checkout API Exception] status=${err.status || 500} code=${err.code || 'UNKNOWN'}`, err.message);
+      if (isLiveProduction || mpAccessToken) {
         throw err;
       }
     }
   }
 
   // FAIL-CLOSED: In production, completely disable simulated Pix and fallback checkout URLs
-  if (isProd) {
+  if (isLiveProduction) {
     if (paymentMethod === 'pix' && !checkoutRecord.pixQrCodeText) {
-      throw new Error('PIX_GATEWAY_UNAVAILABLE: Falha ao gerar chave Pix oficial do provedor em produção.');
+      const failErr: any = new Error('PIX_GATEWAY_UNAVAILABLE: Falha ao gerar chave Pix oficial do provedor em produção.');
+      failErr.status = 503;
+      failErr.code = 'PIX_GATEWAY_UNAVAILABLE';
+      throw failErr;
     }
     if (paymentMethod === 'card' && !checkoutRecord.checkoutUrl) {
-      throw new Error('CARD_GATEWAY_UNAVAILABLE: Falha ao gerar link de pagamento oficial do provedor em produção.');
+      const failErr: any = new Error('CARD_GATEWAY_UNAVAILABLE: Falha ao gerar link de pagamento oficial do provedor em produção.');
+      failErr.status = 503;
+      failErr.code = 'CARD_GATEWAY_UNAVAILABLE';
+      throw failErr;
     }
   } else {
     // Only in development/testing mode allow simulated fallback
@@ -1260,7 +1285,7 @@ export function validateWebhookSignature(
   customSecret?: string
 ): WebhookValidationResult {
   const isProd = process.env.NODE_ENV === 'production' || process.env.PAYMENT_ENVIRONMENT === 'production';
-  const webhookSecret = customSecret || process.env.MERCADOPAGO_WEBHOOK_SECRET;
+  const webhookSecret = customSecret !== undefined ? customSecret : process.env.MERCADOPAGO_WEBHOOK_SECRET;
 
   // 1. Fail-closed check for secret presence
   if (!webhookSecret) {
@@ -1898,7 +1923,7 @@ export async function processWebhookEvent(event: {
             eventId,
             userId: trustedUserId,
             status: eventStatus,
-            amount: payload?.transaction_amount || (verifiedCycle === 'annual' ? 399 : 39.9),
+            amount: payload?.transaction_amount || (verifiedCycle === 'annual' ? getPlanConfig(verifiedPlanId).priceAnnual : getPlanConfig(verifiedPlanId).priceMonthly),
             processedAt: now,
             schemaVersion: SCHEMA_VERSION
           });
@@ -2039,7 +2064,7 @@ export async function processWebhookEvent(event: {
         eventId,
         userId: trustedUserId,
         processedAt: now,
-        amount: verifiedCycle === 'annual' ? 399 : 39.9,
+        amount: payload?.transaction_amount || (verifiedCycle === 'annual' ? getPlanConfig(verifiedPlanId).priceAnnual : getPlanConfig(verifiedPlanId).priceMonthly),
         status: eventStatus
       };
     }

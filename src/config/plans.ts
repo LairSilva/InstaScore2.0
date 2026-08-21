@@ -80,9 +80,9 @@ export const PLANS: Record<PlanType, PlanConfig> = {
     name: 'InstaScore Pro',
     description: 'Experiência executiva completa: resolva todos os gargalos com IA profunda, roteiros prontos, matriz C.A.G.E., carrosséis, stories e bios de alta conversão.',
     priceMonthly: 39.90,
-    priceAnnual: 399.00,
+    priceAnnual: 349.90,
     formattedPriceMonthly: 'R$ 39,90/mês',
-    formattedPriceAnnual: 'R$ 399,00/ano',
+    formattedPriceAnnual: 'R$ 349,90/ano',
     quotas: {
       maxDiagnosesTotal: -1, // Unlimited total
       maxDiagnosesPerMonth: 15,

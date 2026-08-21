@@ -54,9 +54,28 @@ app.use(compression({
   level: 6,
 }));
 
-// Increase request size limits to support base64 screenshot uploads (max 15MB)
-app.use(express.json({ limit: "15mb" }));
-app.use(express.urlencoded({ extended: true, limit: "15mb" }));
+// Increase request size limits to support multi-screenshot base64 uploads (max 25MB)
+app.use(express.json({ limit: "25mb" }));
+app.use(express.urlencoded({ extended: true, limit: "25mb" }));
+
+// Handle JSON body parser errors gracefully with pure JSON response
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (err && (err.type === "entity.too.large" || err.status === 413)) {
+    return res.status(413).json({
+      success: false,
+      error: "PAYLOAD_TOO_LARGE",
+      message: "As imagens enviadas excederam o limite máximo de 25MB. Envie imagens menores."
+    });
+  }
+  if (err instanceof SyntaxError && "body" in err) {
+    return res.status(400).json({
+      success: false,
+      error: "INVALID_JSON_BODY",
+      message: "Corpo da requisição JSON malformado."
+    });
+  }
+  next(err);
+});
 
 // Mount global optional auth on /api routes to extract and verify tokens when present
 app.use("/api", optionalAuth);
@@ -80,6 +99,92 @@ function getGoogleGenAI(): GoogleGenAI {
     });
   }
   return aiInstance;
+}
+
+/**
+ * Check if an error from Gemini API is transient (503, 429, 500, network error)
+ */
+function isTransientAiError(err: any): boolean {
+  if (!err) return false;
+  const status = err.status || err.code || (err.error && err.error.code);
+  const msg = (err.message || (err.error && err.error.message) || "").toLowerCase();
+  
+  if (status === 503 || status === 429 || status === 500 || status === "UNAVAILABLE" || status === "RESOURCE_EXHAUSTED") {
+    return true;
+  }
+  if (
+    msg.includes("503") ||
+    msg.includes("429") ||
+    msg.includes("high demand") ||
+    msg.includes("spikes in demand") ||
+    msg.includes("quota") ||
+    msg.includes("unavailable") ||
+    msg.includes("rate limit") ||
+    msg.includes("overloaded") ||
+    msg.includes("econnreset") ||
+    msg.includes("timeout") ||
+    msg.includes("temporarily")
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Execute Gemini text/chat generation with exponential backoff and fallback models
+ */
+async function callGeminiWithRobustFallback(params: {
+  contents: any;
+  config?: any;
+  models?: string[];
+  maxRetriesPerModel?: number;
+  initialDelayMs?: number;
+}): Promise<{ text: string; modelUsed: string; response: any; durationMs: number; fallbackUsed: boolean; totalAttempts: number }> {
+  const models = params.models || [AI_MODEL_ROUTER.primaryModel, ...AI_MODEL_ROUTER.fallbackModels];
+  const maxRetries = params.maxRetriesPerModel ?? 1;
+  const initialDelay = params.initialDelayMs ?? AI_MODEL_ROUTER.retryDelayBaseMs;
+  const overallStart = Date.now();
+  let lastError: any = null;
+  let totalAttempts = 0;
+
+  for (let mIdx = 0; mIdx < models.length; mIdx++) {
+    const model = models[mIdx];
+    const isFallback = mIdx > 0;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      totalAttempts++;
+      try {
+        const ai = getGoogleGenAI();
+        const response = await ai.models.generateContent({
+          model,
+          contents: params.contents,
+          config: params.config
+        });
+        const durationMs = Date.now() - overallStart;
+        return {
+          text: response.text || "",
+          modelUsed: model,
+          response,
+          durationMs,
+          fallbackUsed: isFallback,
+          totalAttempts
+        };
+      } catch (err: any) {
+        lastError = err;
+        const isTransient = isTransientAiError(err);
+        console.warn(`[Gemini Router] Model ${model} (attempt ${attempt + 1}/${maxRetries + 1}) failed. Transient=${isTransient}:`, err?.message || err);
+
+        if (attempt < maxRetries && isTransient) {
+          const delay = initialDelay * Math.pow(1.5, attempt) + Math.floor(Math.random() * 300);
+          await new Promise(r => setTimeout(r, delay));
+        } else {
+          break;
+        }
+      }
+    }
+  }
+
+  throw lastError || new Error("ALL_AI_MODELS_FAILED");
 }
 
 // Health check route with structured system status
@@ -119,17 +224,54 @@ app.get("/api/subscription/status", requireAuth, async (req, res) => {
 
 // 2. Create REAL checkout session (Mercado Pago / Stripe / Production Gateway)
 app.post("/api/checkout/create-session", requireAuth, async (req, res) => {
+  const startTime = Date.now();
+  const requestId = `chk_${Date.now()}_${crypto.randomBytes(3).toString("hex")}`;
+  const userId = req.user?.uid;
+  const maskedUid = userId ? (userId.length > 8 ? `${userId.substring(0, 4)}...${userId.slice(-4)}` : userId) : "unknown";
+
   try {
-    const userId = req.user!.uid;
-    const { planId, cycle, paymentMethod, userEmail } = req.body;
+    const { planId = "PRO", cycle = "monthly", paymentMethod = "pix", userEmail } = req.body || {};
+
+    if (planId !== "PRO" && planId !== "FREE") {
+      const durationMs = Date.now() - startTime;
+      console.warn(`[InstaScore Checkout] [${requestId}] uid=${maskedUid} status=400 code=INVALID_PLAN duration=${durationMs}ms`);
+      return res.status(400).json({
+        success: false,
+        error: "INVALID_PLAN",
+        message: "Plano selecionado inválido. Selecione o plano PRO ou FREE.",
+        requestId
+      });
+    }
+
+    if (cycle !== "monthly" && cycle !== "annual") {
+      const durationMs = Date.now() - startTime;
+      console.warn(`[InstaScore Checkout] [${requestId}] uid=${maskedUid} status=400 code=INVALID_CYCLE duration=${durationMs}ms`);
+      return res.status(400).json({
+        success: false,
+        error: "INVALID_CYCLE",
+        message: "Ciclo de faturamento inválido. Escolha 'monthly' ou 'annual'.",
+        requestId
+      });
+    }
+
+    if (paymentMethod !== "pix" && paymentMethod !== "card") {
+      const durationMs = Date.now() - startTime;
+      console.warn(`[InstaScore Checkout] [${requestId}] uid=${maskedUid} status=400 code=INVALID_PAYMENT_METHOD duration=${durationMs}ms`);
+      return res.status(400).json({
+        success: false,
+        error: "INVALID_PAYMENT_METHOD",
+        message: "Método de pagamento inválido. Escolha 'pix' ou 'card'.",
+        requestId
+      });
+    }
 
     const appUrl = `${req.protocol}://${req.get('host')}`;
 
     const sessionRecord = await createCheckoutSessionServer({
-      userId,
-      planId: planId === "PRO" ? "PRO" : "FREE",
-      cycle: cycle === "annual" ? "annual" : "monthly",
-      paymentMethod: paymentMethod === "card" ? "card" : "pix",
+      userId: req.user!.uid,
+      planId,
+      cycle,
+      paymentMethod,
       userEmail,
       appUrl
     });
@@ -139,8 +281,12 @@ app.post("/api/checkout/create-session", requireAuth, async (req, res) => {
       ? selectedPlanConfig.formattedPriceAnnual 
       : selectedPlanConfig.formattedPriceMonthly;
 
+    const durationMs = Date.now() - startTime;
+    console.log(`[InstaScore Checkout] [${requestId}] uid=${maskedUid} method=${sessionRecord.paymentMethod} plan=${sessionRecord.planId} cycle=${sessionRecord.cycle} status=200 duration=${durationMs}ms`);
+
     return res.json({
       success: true,
+      requestId,
       sessionId: sessionRecord.sessionId,
       userId: sessionRecord.userId,
       planId: sessionRecord.planId,
@@ -155,11 +301,17 @@ app.post("/api/checkout/create-session", requireAuth, async (req, res) => {
       expiresAt: sessionRecord.expiresAt
     });
   } catch (err: any) {
-    console.error("[Checkout Creation Failed]", err);
-    return res.status(500).json({
+    const durationMs = Date.now() - startTime;
+    const statusCode = err.status === 400 ? 400 : (err.status === 401 || err.code === 'GATEWAY_AUTH_ERROR' ? 502 : (err.status === 503 || err.code === 'GATEWAY_CONFIG_MISSING' || err.code === 'PIX_GATEWAY_UNAVAILABLE' || err.code === 'CARD_GATEWAY_UNAVAILABLE' ? 503 : 500));
+    const errorCode = err.code || "CHECKOUT_CREATION_FAILED";
+
+    console.error(`[InstaScore Checkout] [${requestId}] uid=${maskedUid} status=${statusCode} code=${errorCode} duration=${durationMs}ms - error=${err.message || 'Unknown error'}`);
+
+    return res.status(statusCode).json({
       success: false,
-      error: "CHECKOUT_CREATION_FAILED",
-      message: "Não foi possível gerar a sessão de pagamento. Tente novamente."
+      requestId,
+      error: errorCode,
+      message: err.message || "Não foi possível gerar a sessão de pagamento. Tente novamente."
     });
   }
 });
@@ -366,28 +518,24 @@ Forneça:
 Retorne a resposta formatada de forma limpa em Markdown.`;
 
   try {
-    const ai = getGoogleGenAI();
-    const startTime = Date.now();
-    const response = await ai.models.generateContent({
-      model: AI_MODEL_ROUTER.primaryModel,
+    const aiResult = await callGeminiWithRobustFallback({
       contents: promptText
     });
-    const durationMs = Date.now() - startTime;
 
     logAiExecutionCost({
       userId,
       action: `generate_content_${contentType}`,
-      modelUsed: AI_MODEL_ROUTER.primaryModel,
-      durationMs,
-      retries: 0,
-      fallbackUsed: false,
+      modelUsed: aiResult.modelUsed,
+      durationMs: aiResult.durationMs,
+      retries: aiResult.totalAttempts - 1,
+      fallbackUsed: aiResult.fallbackUsed,
       inputTokens: 500,
       outputTokens: 800
     });
 
     return res.json({
       success: true,
-      content: response.text,
+      content: aiResult.text,
       quotaUsed: quota.currentCount,
       quotaMax: quota.maxLimit
     });
@@ -527,28 +675,24 @@ DIRETRIZES DA RESPOSTA:
 5. Não use clichês vazios como "supercharge" ou promessas mágicas de viralização rápida.`;
 
   try {
-    const ai = getGoogleGenAI();
-    const startTime = Date.now();
-    const response = await ai.models.generateContent({
-      model: AI_MODEL_ROUTER.primaryModel,
+    const aiResult = await callGeminiWithRobustFallback({
       contents: promptText
     });
-    const durationMs = Date.now() - startTime;
 
     logAiExecutionCost({
       userId,
       action: "mentor_chat",
-      modelUsed: AI_MODEL_ROUTER.primaryModel,
-      durationMs,
-      retries: 0,
-      fallbackUsed: false,
+      modelUsed: aiResult.modelUsed,
+      durationMs: aiResult.durationMs,
+      retries: aiResult.totalAttempts - 1,
+      fallbackUsed: aiResult.fallbackUsed,
       inputTokens: 600,
       outputTokens: 400
     });
 
     return res.json({
       success: true,
-      text: response.text || "Compreendido. Vamos focar nos seus principais gargalos para acelerar o crescimento do seu perfil.",
+      text: aiResult.text || "Compreendido. Vamos focar nos seus principais gargalos para acelerar o crescimento do seu perfil.",
       quotaUsed: quota.currentCount,
       quotaMax: quota.maxLimit
     });
@@ -607,21 +751,17 @@ Gere uma estratégia em JSON com as seguintes chaves exatas:
 Retorne apenas JSON válido.`;
 
   try {
-    const ai = getGoogleGenAI();
-    const startTime = Date.now();
-    const response = await ai.models.generateContent({
-      model: AI_MODEL_ROUTER.primaryModel,
+    const aiResult = await callGeminiWithRobustFallback({
       contents: promptText
     });
-    const durationMs = Date.now() - startTime;
 
     logAiExecutionCost({
       userId,
       action: "start_mode_ai_generation",
-      modelUsed: AI_MODEL_ROUTER.primaryModel,
-      durationMs,
-      retries: 0,
-      fallbackUsed: false,
+      modelUsed: aiResult.modelUsed,
+      durationMs: aiResult.durationMs,
+      retries: aiResult.totalAttempts - 1,
+      fallbackUsed: aiResult.fallbackUsed,
       inputTokens: 500,
       outputTokens: 900
     });
@@ -630,7 +770,7 @@ Retorne apenas JSON válido.`;
     const baseResult = generateStartModeStrategy({ projectIdea, objective: objective || "" });
 
     // Parse AI JSON additions if valid
-    const rawText = response.text || "{}";
+    const rawText = aiResult.text || "{}";
     const cleaned = cleanAndParseJson(rawText);
 
     if (cleaned && typeof cleaned === "object") {
@@ -711,26 +851,22 @@ Retorne um JSON com a estrutura:
 Retorne apenas JSON válido.`;
 
   try {
-    const ai = getGoogleGenAI();
-    const startTime = Date.now();
-    const response = await ai.models.generateContent({
-      model: AI_MODEL_ROUTER.primaryModel,
+    const aiResult = await callGeminiWithRobustFallback({
       contents: promptText
     });
-    const durationMs = Date.now() - startTime;
 
     logAiExecutionCost({
       userId,
       action: "simulator_optimize",
-      modelUsed: AI_MODEL_ROUTER.primaryModel,
-      durationMs,
-      retries: 0,
-      fallbackUsed: false,
+      modelUsed: aiResult.modelUsed,
+      durationMs: aiResult.durationMs,
+      retries: aiResult.totalAttempts - 1,
+      fallbackUsed: aiResult.fallbackUsed,
       inputTokens: 400,
       outputTokens: 400
     });
 
-    const parsed = cleanAndParseJson(response.text || "{}");
+    const parsed = cleanAndParseJson(aiResult.text || "{}");
     return res.json({
       success: true,
       bios: parsed?.optimizedBios || [],
@@ -853,26 +989,22 @@ Retorne ESTRITAMENTE em formato JSON com a estrutura:
 }`;
 
   try {
-    const ai = getGoogleGenAI();
-    const startTime = Date.now();
-    const response = await ai.models.generateContent({
-      model: AI_MODEL_ROUTER.primaryModel,
+    const aiResult = await callGeminiWithRobustFallback({
       contents: promptText
     });
-    const durationMs = Date.now() - startTime;
 
     logAiExecutionCost({
       userId,
       action: "pro_reels_script",
-      modelUsed: AI_MODEL_ROUTER.primaryModel,
-      durationMs,
-      retries: 0,
-      fallbackUsed: false,
+      modelUsed: aiResult.modelUsed,
+      durationMs: aiResult.durationMs,
+      retries: aiResult.totalAttempts - 1,
+      fallbackUsed: aiResult.fallbackUsed,
       inputTokens: 650,
       outputTokens: 900
     });
 
-    const parsed = cleanAndParseJson(response.text || "{}");
+    const parsed = cleanAndParseJson(aiResult.text || "{}");
     return res.json({
       success: true,
       deliverable: parsed,
@@ -939,26 +1071,22 @@ Retorne ESTRITAMENTE em JSON:
 }`;
 
   try {
-    const ai = getGoogleGenAI();
-    const startTime = Date.now();
-    const response = await ai.models.generateContent({
-      model: AI_MODEL_ROUTER.primaryModel,
+    const aiResult = await callGeminiWithRobustFallback({
       contents: promptText
     });
-    const durationMs = Date.now() - startTime;
 
     logAiExecutionCost({
       userId,
       action: "pro_carousel",
-      modelUsed: AI_MODEL_ROUTER.primaryModel,
-      durationMs,
-      retries: 0,
-      fallbackUsed: false,
+      modelUsed: aiResult.modelUsed,
+      durationMs: aiResult.durationMs,
+      retries: aiResult.totalAttempts - 1,
+      fallbackUsed: aiResult.fallbackUsed,
       inputTokens: 700,
       outputTokens: 950
     });
 
-    const parsed = cleanAndParseJson(response.text || "{}");
+    const parsed = cleanAndParseJson(aiResult.text || "{}");
     return res.json({
       success: true,
       deliverable: parsed,
@@ -1024,26 +1152,22 @@ Retorne ESTRITAMENTE em JSON:
 }`;
 
   try {
-    const ai = getGoogleGenAI();
-    const startTime = Date.now();
-    const response = await ai.models.generateContent({
-      model: AI_MODEL_ROUTER.primaryModel,
+    const aiResult = await callGeminiWithRobustFallback({
       contents: promptText
     });
-    const durationMs = Date.now() - startTime;
 
     logAiExecutionCost({
       userId,
       action: "pro_stories_sequence",
-      modelUsed: AI_MODEL_ROUTER.primaryModel,
-      durationMs,
-      retries: 0,
-      fallbackUsed: false,
+      modelUsed: aiResult.modelUsed,
+      durationMs: aiResult.durationMs,
+      retries: aiResult.totalAttempts - 1,
+      fallbackUsed: aiResult.fallbackUsed,
       inputTokens: 600,
       outputTokens: 850
     });
 
-    const parsed = cleanAndParseJson(response.text || "{}");
+    const parsed = cleanAndParseJson(aiResult.text || "{}");
     return res.json({
       success: true,
       deliverable: parsed,
@@ -1104,26 +1228,22 @@ Retorne ESTRITAMENTE em JSON:
 }`;
 
   try {
-    const ai = getGoogleGenAI();
-    const startTime = Date.now();
-    const response = await ai.models.generateContent({
-      model: AI_MODEL_ROUTER.primaryModel,
+    const aiResult = await callGeminiWithRobustFallback({
       contents: promptText
     });
-    const durationMs = Date.now() - startTime;
 
     logAiExecutionCost({
       userId,
       action: "pro_positioning",
-      modelUsed: AI_MODEL_ROUTER.primaryModel,
-      durationMs,
-      retries: 0,
-      fallbackUsed: false,
+      modelUsed: aiResult.modelUsed,
+      durationMs: aiResult.durationMs,
+      retries: aiResult.totalAttempts - 1,
+      fallbackUsed: aiResult.fallbackUsed,
       inputTokens: 600,
       outputTokens: 800
     });
 
-    const parsed = cleanAndParseJson(response.text || "{}");
+    const parsed = cleanAndParseJson(aiResult.text || "{}");
     return res.json({
       success: true,
       deliverable: parsed,
@@ -1185,26 +1305,22 @@ Retorne ESTRITAMENTE em JSON:
 }`;
 
   try {
-    const ai = getGoogleGenAI();
-    const startTime = Date.now();
-    const response = await ai.models.generateContent({
-      model: AI_MODEL_ROUTER.primaryModel,
+    const aiResult = await callGeminiWithRobustFallback({
       contents: promptText
     });
-    const durationMs = Date.now() - startTime;
 
     logAiExecutionCost({
       userId,
       action: "pro_calendar",
-      modelUsed: AI_MODEL_ROUTER.primaryModel,
-      durationMs,
-      retries: 0,
-      fallbackUsed: false,
+      modelUsed: aiResult.modelUsed,
+      durationMs: aiResult.durationMs,
+      retries: aiResult.totalAttempts - 1,
+      fallbackUsed: aiResult.fallbackUsed,
       inputTokens: 600,
       outputTokens: 900
     });
 
-    const parsed = cleanAndParseJson(response.text || "{}");
+    const parsed = cleanAndParseJson(aiResult.text || "{}");
     return res.json({
       success: true,
       deliverable: parsed,
@@ -1240,9 +1356,6 @@ app.post("/api/pro/generate-image", requireAuth, async (req, res) => {
   const { prompt, aspectRatio, postType, niche } = req.body;
 
   try {
-    const ai = getGoogleGenAI();
-    const startTime = Date.now();
-
     // Generate comprehensive professional prompt & briefing using AI
     const designPrompt = `Você é o Diretor de Arte do InstaScore Studio.
 Gere um briefing de imagem de alta conversão para o post: "${prompt || "Imagem de capa estratégica"}" no nicho "${niche || "Profissional"}".
@@ -1256,24 +1369,22 @@ Retorne em JSON:
   "visualFocalPoint": "Ponto focal para não cortar elementos no feed 1:1"
 }`;
 
-    const textResponse = await ai.models.generateContent({
-      model: AI_MODEL_ROUTER.primaryModel,
+    const aiResult = await callGeminiWithRobustFallback({
       contents: designPrompt
     });
-    const durationMs = Date.now() - startTime;
 
     logAiExecutionCost({
       userId,
       action: "pro_generate_image",
-      modelUsed: AI_MODEL_ROUTER.primaryModel,
-      durationMs,
-      retries: 0,
-      fallbackUsed: false,
+      modelUsed: aiResult.modelUsed,
+      durationMs: aiResult.durationMs,
+      retries: aiResult.totalAttempts - 1,
+      fallbackUsed: aiResult.fallbackUsed,
       inputTokens: 400,
       outputTokens: 500
     });
 
-    const parsed = cleanAndParseJson(textResponse.text || "{}");
+    const parsed = cleanAndParseJson(aiResult.text || "{}");
 
     return res.json({
       success: true,
@@ -1729,6 +1840,55 @@ const GEMINI_RESPONSE_SCHEMA = {
   ]
 };
 
+// Timeout configuration for AI pipelines
+const OVERALL_PIPELINE_TIMEOUT_MS = 115000; // 115 seconds max overall pipeline execution
+const GEMINI_CALL_TIMEOUT_MS = 35000; // 35 seconds per individual multimodal attempt
+const GEMINI_CORRECTION_TIMEOUT_MS = 25000; // 25 seconds per individual correction attempt
+
+/**
+ * Executes an async task with individual timeout and optional parent abort signal integration.
+ */
+async function runWithTimeout<T>(
+  promiseFactory: (signal?: AbortSignal) => Promise<T>,
+  timeoutMs: number,
+  parentSignal?: AbortSignal
+): Promise<T> {
+  const controller = new AbortController();
+  let timeoutHandle: NodeJS.Timeout | null = null;
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutHandle = setTimeout(() => {
+      controller.abort();
+      const err: any = new Error("CALL_TIMEOUT");
+      err.code = "CALL_TIMEOUT";
+      reject(err);
+    }, timeoutMs);
+  });
+
+  const onParentAbort = () => {
+    controller.abort();
+  };
+
+  if (parentSignal) {
+    if (parentSignal.aborted) {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+      const err: any = new Error("CLIENT_ABORT");
+      err.code = "CLIENT_ABORT";
+      throw err;
+    }
+    parentSignal.addEventListener("abort", onParentAbort, { once: true });
+  }
+
+  try {
+    return await Promise.race([promiseFactory(controller.signal), timeoutPromise]);
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+    if (parentSignal) {
+      parentSignal.removeEventListener("abort", onParentAbort);
+    }
+  }
+}
+
 // Route for analyzing screenshots
 interface AIExecutionMeta {
   modelUsed: string;
@@ -1739,66 +1899,106 @@ interface AIExecutionMeta {
   status: "success" | "failed";
   finishReason?: string;
   responseLength?: number;
+  validationIssues?: any;
 }
 
 /**
- * Execute multimodal analysis with automated Zod validation, fast correctional retries, and fallback routing.
+ * Execute multimodal analysis with automated Zod validation, fast correctional retries, per-call timeouts, and fallback routing.
  */
 async function executeAnalysisPipeline(params: {
   parts: any[];
   systemInstruction: string;
   responseSchema: any;
   requestId: string;
+  clientSignal?: AbortSignal;
 }): Promise<{ parsedDiagnosis: any; meta: AIExecutionMeta }> {
   const overallStartTime = Date.now();
   const models = [AI_MODEL_ROUTER.primaryModel, ...AI_MODEL_ROUTER.fallbackModels];
   let totalCalls = 0;
   let retries = 0;
   let lastValidationError: any = null;
-  let lastDiagnosticInfo: any = null;
+  let timedOut = false;
 
   for (let modelIdx = 0; modelIdx < models.length; modelIdx++) {
+    // Check if overall execution window or client signal expired
+    if (Date.now() - overallStartTime >= OVERALL_PIPELINE_TIMEOUT_MS || params.clientSignal?.aborted) {
+      timedOut = true;
+      break;
+    }
+
     const currentModel = models[modelIdx];
     const isFallback = modelIdx > 0;
     
     console.log(`[InstaScore Pipeline] [${params.requestId}] Starting model execution: ${currentModel} (fallback=${isFallback})`);
 
-    // Step 1: Execute Multimodal Call
-    totalCalls++;
-    const callStart = Date.now();
+    // Step 1: Execute Multimodal Call with transient retry & per-call timeout
     let rawText = "";
     let finishReason = "STOP";
+    const maxTransientRetries = 1;
 
-    try {
-      const ai = getGoogleGenAI();
-      const response = await ai.models.generateContent({
-        model: currentModel,
-        contents: { parts: params.parts },
-        config: {
-          systemInstruction: params.systemInstruction,
-          responseMimeType: "application/json",
-          responseSchema: params.responseSchema,
-          temperature: 0.2
+    for (let callAttempt = 0; callAttempt <= maxTransientRetries; callAttempt++) {
+      if (Date.now() - overallStartTime >= OVERALL_PIPELINE_TIMEOUT_MS || params.clientSignal?.aborted) {
+        timedOut = true;
+        break;
+      }
+
+      totalCalls++;
+      const callStart = Date.now();
+
+      try {
+        const ai = getGoogleGenAI();
+        const response = await runWithTimeout(
+          async () => {
+            return await ai.models.generateContent({
+              model: currentModel,
+              contents: { parts: params.parts },
+              config: {
+                systemInstruction: params.systemInstruction,
+                responseMimeType: "application/json",
+                responseSchema: params.responseSchema,
+                temperature: 0.2
+              }
+            });
+          },
+          GEMINI_CALL_TIMEOUT_MS,
+          params.clientSignal
+        );
+
+        rawText = response.text || "";
+        finishReason = response.candidates?.[0]?.finishReason || "STOP";
+        const callDuration = Date.now() - callStart;
+
+        console.log(`[InstaScore Pipeline] [${params.requestId}] ${currentModel} responded in ${callDuration}ms (length=${rawText.length}, finishReason=${finishReason})`);
+        break;
+      } catch (apiErr: any) {
+        const isTimeoutErr = apiErr.code === "CALL_TIMEOUT" || apiErr.message === "CALL_TIMEOUT" || apiErr.message?.includes("DEADLINE_EXCEEDED");
+        if (isTimeoutErr) {
+          console.warn(`[InstaScore Pipeline] [${params.requestId}] Call timeout (${GEMINI_CALL_TIMEOUT_MS}ms) on ${currentModel} attempt ${callAttempt + 1}`);
+          // Don't retry same model on timeout; fall back to next model
+          break;
         }
-      });
 
-      rawText = response.text || "";
-      finishReason = response.candidates?.[0]?.finishReason || "STOP";
-      const callDuration = Date.now() - callStart;
+        const isTransient = isTransientAiError(apiErr);
+        console.warn(`[InstaScore Pipeline] [${params.requestId}] API call error on ${currentModel} (attempt ${callAttempt + 1}, transient=${isTransient}):`, apiErr.message || apiErr);
 
-      console.log(`[InstaScore Pipeline] [${params.requestId}] ${currentModel} responded in ${callDuration}ms (length=${rawText.length}, finishReason=${finishReason})`);
-    } catch (apiErr: any) {
-      console.warn(`[InstaScore Pipeline] [${params.requestId}] API call error on ${currentModel}:`, apiErr.message || apiErr);
-      // If primary model has API network/quota error, continue immediately to fallback model
+        if (callAttempt < maxTransientRetries && isTransient) {
+          const backoffDelay = 800 * (callAttempt + 1) + Math.floor(Math.random() * 300);
+          console.log(`[InstaScore Pipeline] [${params.requestId}] Transient error on ${currentModel}, waiting ${backoffDelay}ms before retry...`);
+          await new Promise(r => setTimeout(r, backoffDelay));
+        } else {
+          break;
+        }
+      }
+    }
+
+    if (timedOut) break;
+
+    if (!rawText || !rawText.trim()) {
+      console.warn(`[InstaScore Pipeline] [${params.requestId}] Empty or whitespace response from ${currentModel}`);
       continue;
     }
 
-    if (!rawText) {
-      console.warn(`[InstaScore Pipeline] [${params.requestId}] Empty response from ${currentModel}`);
-      continue;
-    }
-
-    // Step 2: Parse JSON
+    // Step 2: Parse JSON safely
     let parsedJson: any = null;
     try {
       parsedJson = cleanAndParseJson(rawText);
@@ -1839,12 +2039,13 @@ async function executeAnalysisPipeline(params: {
       console.warn(`[InstaScore Pipeline] [${params.requestId}] Zod validation failed for ${currentModel}. Invalid fields:`, JSON.stringify(issues));
     }
 
-    // Step 4: Fast Correctional Retry (1 attempt per model)
-    console.log(`[InstaScore Pipeline] [${params.requestId}] Invoking targeted correctional retry for ${currentModel}...`);
-    totalCalls++;
-    retries++;
+    // Step 4: Fast Correctional Retry (1 attempt per model) if time allows
+    if (Date.now() - overallStartTime < OVERALL_PIPELINE_TIMEOUT_MS - GEMINI_CORRECTION_TIMEOUT_MS && !params.clientSignal?.aborted) {
+      console.log(`[InstaScore Pipeline] [${params.requestId}] Invoking targeted correctional retry for ${currentModel}...`);
+      totalCalls++;
+      retries++;
 
-    const correctionPrompt = `A análise gerada anteriormente não atendeu estritamente à validação Zod.
+      const correctionPrompt = `A análise gerada anteriormente não atendeu estritamente à validação Zod.
 Erros específicos de validação identificados:
 ${JSON.stringify(lastValidationError || "JSON_PARSE_ERROR", null, 2)}
 
@@ -1858,65 +2059,86 @@ Diretrizes obrigatórias de correção:
 4. evaluations: array contendo todos os critérios avaliados com { criterion_id: string, grade: integer de 0 a 4 ou null, confidence: number de 0 a 1, evidence: string, justification: string }
 5. strengths: array de no máximo 3 itens { criterion_id: string, title: string, reason: string }
 6. critical_gaps: array de no máximo 5 itens { criterion_id: string, title: string, reason: string, impact: string }
-7. recommended_actions: array de no máximo 5 itens { criterion_id: string, title: string, instruction: string, effort: "low" | "medium" | "high", expected_effect: string }
+7. recommended_actions: array de no máximo 10 itens { criterion_id: string, title: string, instruction: string, effort: "low" | "medium" | "high", expected_effect: string }
 8. tomorrow_action: { criterion_id: string, title: string, instruction: string }
 9. disclaimer: string
 
 Retorne EXCLUSIVAMENTE o JSON estruturado corrigido.`;
 
-    try {
-      const ai = getGoogleGenAI();
-      const retryResponse = await ai.models.generateContent({
-        model: currentModel,
-        contents: [{ text: correctionPrompt }],
-        config: {
-          systemInstruction: params.systemInstruction,
-          responseMimeType: "application/json",
-          responseSchema: params.responseSchema,
-          temperature: 0.1
-        }
-      });
+      try {
+        const ai = getGoogleGenAI();
+        const retryResponse = await runWithTimeout(
+          async () => {
+            return await ai.models.generateContent({
+              model: currentModel,
+              contents: [{ text: correctionPrompt }],
+              config: {
+                systemInstruction: params.systemInstruction,
+                responseMimeType: "application/json",
+                responseSchema: params.responseSchema,
+                temperature: 0.1
+              }
+            });
+          },
+          GEMINI_CORRECTION_TIMEOUT_MS,
+          params.clientSignal
+        );
 
-      const retryRawText = retryResponse.text || "";
-      if (retryRawText) {
-        const retryParsed = cleanAndParseJson(retryRawText);
-        const retryZod = DiagnosisSchema.safeParse(retryParsed);
+        const retryRawText = retryResponse.text || "";
+        if (retryRawText && retryRawText.trim()) {
+          const retryParsed = cleanAndParseJson(retryRawText);
+          const retryZod = DiagnosisSchema.safeParse(retryParsed);
 
-        if (retryZod.success) {
-          const totalDuration = Date.now() - overallStartTime;
-          console.log(`[InstaScore Pipeline] [${params.requestId}] Correctional retry SUCCESS on ${currentModel} in ${totalDuration}ms`);
-          return {
-            parsedDiagnosis: retryZod.data,
-            meta: {
-              modelUsed: currentModel,
-              totalCalls,
-              retries,
-              fallbackUsed: isFallback,
-              durationMs: totalDuration,
-              status: "success",
-              finishReason: retryResponse.candidates?.[0]?.finishReason || "STOP",
-              responseLength: retryRawText.length
-            }
-          };
-        } else {
-          lastValidationError = retryZod.error.issues.map(i => ({
-            path: i.path.join("."),
-            code: i.code,
-            message: i.message
-          }));
-          console.warn(`[InstaScore Pipeline] [${params.requestId}] Correctional retry Zod failed:`, JSON.stringify(lastValidationError));
+          if (retryZod.success) {
+            const totalDuration = Date.now() - overallStartTime;
+            console.log(`[InstaScore Pipeline] [${params.requestId}] Correctional retry SUCCESS on ${currentModel} in ${totalDuration}ms`);
+            return {
+              parsedDiagnosis: retryZod.data,
+              meta: {
+                modelUsed: currentModel,
+                totalCalls,
+                retries,
+                fallbackUsed: isFallback,
+                durationMs: totalDuration,
+                status: "success",
+                finishReason: retryResponse.candidates?.[0]?.finishReason || "STOP",
+                responseLength: retryRawText.length
+              }
+            };
+          } else {
+            lastValidationError = retryZod.error.issues.map(i => ({
+              path: i.path.join("."),
+              code: i.code,
+              message: i.message
+            }));
+            console.warn(`[InstaScore Pipeline] [${params.requestId}] Correctional retry Zod failed:`, JSON.stringify(lastValidationError));
+          }
         }
+      } catch (retryErr: any) {
+        console.warn(`[InstaScore Pipeline] [${params.requestId}] Correctional retry call error on ${currentModel}:`, retryErr.message || retryErr);
       }
-    } catch (retryErr: any) {
-      console.warn(`[InstaScore Pipeline] [${params.requestId}] Correctional retry call error on ${currentModel}:`, retryErr.message || retryErr);
     }
   }
 
   // All models and retries exhausted
   const totalDuration = Date.now() - overallStartTime;
-  const failureError: any = new Error("ANALYSIS_VALIDATION_FAILED");
-  failureError.code = "ANALYSIS_VALIDATION_FAILED";
-  failureError.meta = {
+  if (timedOut || totalDuration >= OVERALL_PIPELINE_TIMEOUT_MS || params.clientSignal?.aborted) {
+    const timeoutError: any = new Error("A análise demorou além do limite. Tente novamente.");
+    timeoutError.code = "AI_TIMEOUT";
+    timeoutError.meta = {
+      modelUsed: models[models.length - 1],
+      totalCalls,
+      retries,
+      fallbackUsed: true,
+      durationMs: totalDuration,
+      status: "failed"
+    };
+    throw timeoutError;
+  }
+
+  const invalidResponseError: any = new Error("Resposta inválida ou incompleta dos modelos de IA. Tente novamente.");
+  invalidResponseError.code = "AI_INVALID_RESPONSE";
+  invalidResponseError.meta = {
     modelUsed: models[models.length - 1],
     totalCalls,
     retries,
@@ -1925,7 +2147,7 @@ Retorne EXCLUSIVAMENTE o JSON estruturado corrigido.`;
     status: "failed",
     validationIssues: lastValidationError
   };
-  throw failureError;
+  throw invalidResponseError;
 }
 
 
@@ -2078,41 +2300,90 @@ Por favor, analise as capturas e preencha todos os 25 critérios obrigatórios d
 
   // Unique request trace ID for observability
   const requestId = `req_${Date.now()}_${crypto.randomBytes(3).toString("hex")}`;
+  const requestStartTime = Date.now();
+  const maskedUid = userId ? (userId.length > 8 ? `${userId.substring(0, 4)}...${userId.slice(-4)}` : userId) : "anonymous";
 
-  // Execute analysis pipeline with Zod validation, retry, and fallback
+  // Client cancellation abort controller
+  const clientController = new AbortController();
+  req.on("close", () => {
+    if (!res.writableEnded) {
+      console.log(`[InstaScore Pipeline] [${requestId}] Client connection closed by peer. Aborting pipeline.`);
+      clientController.abort();
+    }
+  });
+
+  // Execute analysis pipeline with Zod validation, retry, fallback, and timeouts
   let pipelineResult: { parsedDiagnosis: any; meta: AIExecutionMeta };
   try {
     pipelineResult = await executeAnalysisPipeline({
       parts,
       systemInstruction: SYSTEM_INSTRUCTION,
       responseSchema: GEMINI_RESPONSE_SCHEMA,
-      requestId
+      requestId,
+      clientSignal: clientController.signal
     });
   } catch (pipelineErr: any) {
-    console.error(`[InstaScore Pipeline] [${requestId}] Execution error:`, pipelineErr.message || pipelineErr);
-    
-    // Fail-safe quota refund policy: restore user quota on AI execution failure
+    const elapsedMs = Date.now() - requestStartTime;
+    const isTimeout =
+      pipelineErr.code === "AI_TIMEOUT" ||
+      pipelineErr.code === "CALL_TIMEOUT" ||
+      pipelineErr.message?.includes("CALL_TIMEOUT") ||
+      pipelineErr.message?.includes("tempo limite") ||
+      pipelineErr.message?.includes("DEADLINE_EXCEEDED") ||
+      elapsedMs >= OVERALL_PIPELINE_TIMEOUT_MS;
+
+    const isInvalidResponse =
+      pipelineErr.code === "AI_INVALID_RESPONSE" ||
+      pipelineErr.code === "ANALYSIS_VALIDATION_FAILED" ||
+      pipelineErr.message?.includes("AI_EMPTY_RESPONSE") ||
+      pipelineErr.message?.includes("AI_INVALID_JSON") ||
+      pipelineErr.message?.includes("Resposta inválida");
+
+    const resolvedErrorCode = isTimeout ? "AI_TIMEOUT" : isInvalidResponse ? "AI_INVALID_RESPONSE" : "ANALYSIS_FAILED";
+
+    // Sanitized log (strictly no tokens, screenshots, raw prompts, or PII)
+    console.error(`[InstaScore Pipeline] [${requestId}] uid=${maskedUid}, stage=ai_pipeline, model=${pipelineErr.meta?.modelUsed || "unknown"}, duration=${elapsedMs}ms, status=failed, code=${resolvedErrorCode}`);
+
+    // Fail-safe quota refund policy: restore user quota on ANY execution failure
     await refundQuota(userId, "DIAGNOSIS");
 
-    if (pipelineErr.code === "ANALYSIS_VALIDATION_FAILED") {
-      return res.status(422).json({
+    if (isTimeout) {
+      return res.status(504).json({
         success: false,
-        error: "ANALYSIS_VALIDATION_FAILED",
-        message: "Não conseguimos concluir esta análise agora. Seus dados e sua quota não foram perdidos. Tente novamente em alguns instantes.",
+        error: {
+          code: "AI_TIMEOUT",
+          message: "A análise demorou além do limite. Tente novamente."
+        },
+        message: "A análise demorou além do limite. Tente novamente.",
+        requestId
+      });
+    }
+
+    if (isInvalidResponse) {
+      return res.status(502).json({
+        success: false,
+        error: {
+          code: "AI_INVALID_RESPONSE",
+          message: "Resposta inválida ou incompleta dos modelos de IA. Tente novamente."
+        },
+        message: "Resposta inválida ou incompleta dos modelos de IA. Tente novamente.",
+        requestId,
         diagnostic_info: {
           requestId,
           stage: "structured_output_validation",
           modelUsed: pipelineErr.meta?.modelUsed,
           totalCalls: pipelineErr.meta?.totalCalls,
-          fallbackUsed: pipelineErr.meta?.fallbackUsed,
-          issues: pipelineErr.meta?.validationIssues
+          fallbackUsed: pipelineErr.meta?.fallbackUsed
         }
       });
     }
 
     return res.status(500).json({
       success: false,
-      error: "ANALYSIS_FAILED",
+      error: {
+        code: "ANALYSIS_FAILED",
+        message: "Ocorreu uma instabilidade temporária no processamento da IA. Sua quota foi preservada. Tente novamente em instantes."
+      },
       message: "Ocorreu uma instabilidade temporária no processamento da IA. Sua quota foi preservada. Tente novamente em instantes.",
       requestId
     });
@@ -2151,16 +2422,20 @@ Por favor, analise as capturas e preencha todos os 25 critérios obrigatórios d
     const missingReason = (parsedDiagnosis.metadata?.missing_elements && parsedDiagnosis.metadata.missing_elements.length > 0)
       ? parsedDiagnosis.metadata.missing_elements.join("; ")
       : "Não foram encontradas evidências de um perfil do Instagram nas imagens enviadas.";
-    console.warn(`[InstaScore] [${requestId}] Insufficient image data detected: ${missingReason}`);
+    console.warn(`[InstaScore] [${requestId}] uid=${maskedUid}, stage=sufficiency_check, status=failed, code=IMAGEM_INVALIDA_OU_INSUFICIENTE`);
 
     // Restitute quota if uploaded image was unreadable as a profile
     await refundQuota(userId, "DIAGNOSIS");
 
     return res.status(400).json({
       success: false,
-      error: "IMAGEM_INVALIDA_OU_INSUFICIENTE",
+      error: {
+        code: "IMAGEM_INVALIDA_OU_INSUFICIENTE",
+        message: `As imagens enviadas não parecem conter as informações de um perfil do Instagram visível. ${missingReason}`
+      },
       message: `As imagens enviadas não parecem conter as informações de um perfil do Instagram visível. ${missingReason}`,
-      missing_elements: parsedDiagnosis.metadata?.missing_elements || []
+      missing_elements: parsedDiagnosis.metadata?.missing_elements || [],
+      requestId
     });
   }
 
@@ -2231,6 +2506,20 @@ Por favor, analise as capturas e preencha todos os 25 critérios obrigatórios d
     diagnosis: parsedDiagnosis,
     scoring: scoringResult,
     meta: fullMeta
+  });
+});
+
+// Global API error handler to guarantee pure JSON responses across all /api routes
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (res.headersSent) {
+    return next(err);
+  }
+  console.error(`[API Global Error] ${req.method} ${req.path}:`, err?.message || err);
+  const status = typeof err.status === "number" && err.status >= 400 && err.status < 600 ? err.status : 500;
+  return res.status(status).json({
+    success: false,
+    error: err.code || "INTERNAL_SERVER_ERROR",
+    message: err.message || "Ocorreu um erro no processamento do servidor."
   });
 });
 

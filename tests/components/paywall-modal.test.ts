@@ -57,5 +57,35 @@ export function runPaywallModalComponentTests(): { passed: number; failed: numbe
     }
   });
 
+  // 5. Button action and request dispatch integration
+  test("PaywallModal dispatches request with Authorization Bearer header to /api/checkout/create-session", () => {
+    if (!paywallContent.includes('/api/checkout/create-session')) {
+      throw new Error("Missing endpoint /api/checkout/create-session in PaywallModal");
+    }
+    if (!paywallContent.includes('getAuthIdToken')) {
+      throw new Error("PaywallModal must call getAuthIdToken to attach Bearer credentials");
+    }
+    if (!paywallContent.includes('Authorization')) {
+      throw new Error("PaywallModal must pass Authorization Bearer header");
+    }
+  });
+
+  // 6. Error and loading states handling
+  test("PaywallModal renders error banner and disabled loading button state on execution", () => {
+    if (!paywallContent.includes('role="alert"')) {
+      throw new Error("PaywallModal must have an accessible error alert region");
+    }
+    if (!paywallContent.includes('disabled={loading}')) {
+      throw new Error("PaywallModal action button must disable during active checkout generation");
+    }
+  });
+
+  // 7. Redirection and fallback link rendering
+  test("PaywallModal provides direct action link for Mercado Pago checkout navigation", () => {
+    if (!paywallContent.includes('href={activeSession.checkoutUrl}')) {
+      throw new Error("PaywallModal must render direct navigation link to checkoutUrl");
+    }
+  });
+
   return { passed, failed, tests: logs };
 }

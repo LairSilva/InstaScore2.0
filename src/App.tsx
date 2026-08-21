@@ -39,8 +39,8 @@ const GlobalBenchmarkView = lazy(() => import("./modules/benchmark/GlobalBenchma
 const DigitalTwinView = lazy(() => import("./modules/twin/DigitalTwinView").then(m => ({ default: m.DigitalTwinView })));
 const TimelineView = lazy(() => import("./modules/history/TimelineView").then(m => ({ default: m.TimelineView })));
 const FloatingMentorWidget = lazy(() => import("./components/FloatingMentorWidget").then(m => ({ default: m.FloatingMentorWidget })));
-const PaywallModal = lazy(() => import("./components/PaywallModal").then(m => ({ default: m.PaywallModal })));
-const MyPlanView = lazy(() => import("./components/MyPlanView").then(m => ({ default: m.MyPlanView })));
+const PaywallModal = lazy(() => import("./components/PaywallModal"));
+const MyPlanView = lazy(() => import("./components/MyPlanView"));
 const PrivacyDataModal = lazy(() => import("./components/PrivacyDataModal"));
 const ShareModal = lazy(() => import("./components/ShareModal"));
 
@@ -90,6 +90,7 @@ export default function App() {
 
   // Error States
   const [errorText, setErrorText] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
 
   // Loading Progression (Processing States)
   const [processingState, setProcessingState] = useState("");
@@ -153,30 +154,33 @@ export default function App() {
         return;
       }
 
-      // Normal progress rise: rise smoothly up to 92% and wait there
+      // Smooth progress rise calibrated to real pipeline stages
       interval = setInterval(() => {
         setProcessingProgress((prev) => {
           if (analysisStatus === "uploading") {
-            if (prev < 15) return prev + 1;
+            if (prev < 20) return prev + 2;
           } else if (analysisStatus === "analyzing") {
-            if (prev < 85) {
-              const remaining = 85 - prev;
-              const step = Math.max(1, Math.floor(remaining / 12)); // slow down as we approach 85
+            // Smoothly move between 20% and 75% during multimodal vision processing
+            if (prev < 75) {
+              const remaining = 75 - prev;
+              const step = Math.max(1, Math.floor(remaining / 14));
               return prev + step;
             }
           } else if (analysisStatus === "validating") {
-            if (prev < 92) return prev + 1;
+            // Once server returns payload, advance swiftly from 85% to 95%
+            if (prev < 95) {
+              const step = Math.max(1, Math.floor((95 - prev) / 4));
+              return prev + step;
+            }
           } else {
             // General fallback progression
-            if (prev < 92) {
-              const remaining = 92 - prev;
-              const step = Math.max(1, Math.ceil(remaining / 15));
-              return prev + step;
+            if (prev < 75) {
+              return prev + 1;
             }
           }
           return prev;
         });
-      }, 500);
+      }, 400);
     } else {
       setProcessingProgress(0);
     }
@@ -188,22 +192,22 @@ export default function App() {
     if (view === "processing") {
       switch (analysisStatus) {
         case "uploading":
-          setProcessingState("Preparando e carregando suas capturas...");
+          setProcessingState("Preparando arquivos e autenticação segura...");
           break;
         case "analyzing":
-          setProcessingState("Inteligência artificial lendo suas mídias (isto pode levar até 1 minuto)...");
+          setProcessingState("Visão computacional e leitura multimodal do perfil...");
           break;
         case "validating":
-          setProcessingState("Validando a integridade dos dados e calculando o InstaScore...");
+          setProcessingState("Calculando dimensão C.A.G.E. e prioridades estratégicas...");
           break;
         case "success":
-          setProcessingState("Diagnóstico concluído!");
+          setProcessingState("Diagnóstico estrutural concluído com sucesso!");
           break;
         case "error":
-          setProcessingState("Erro na análise.");
+          setProcessingState("Não foi possível concluir o diagnóstico.");
           break;
         default:
-          setProcessingState("Iniciando auditoria...");
+          setProcessingState("Iniciando auditoria estrutural...");
       }
     }
   }, [view, analysisStatus]);
@@ -358,6 +362,10 @@ export default function App() {
 
   // Submit diagnosis request to Server-side API with safe state orchestration
   const handleGenerateDiagnosis = async () => {
+    // Double-click protection: prevent concurrent requests
+    const isProcessing = analysisStatus === "analyzing" || analysisStatus === "uploading" || analysisStatus === "validating";
+    if (isProcessing) return;
+
     if (!consent) {
       setErrorText("Você precisa marcar o consentimento de privacidade antes de continuar.");
       return;
@@ -368,6 +376,7 @@ export default function App() {
     setProcessingProgress(5);
     setProcessingState("Inicializando autenticação segura...");
     setErrorText(null);
+    setErrorCode(null);
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => {
@@ -423,7 +432,7 @@ export default function App() {
 
       setAnalysisStatus("analyzing");
       setProcessingProgress(20);
-      setProcessingState("Inteligência artificial lendo suas mídias (isto pode levar até 1 minuto)...");
+      setProcessingState("Visão computacional e leitura multimodal de perfil...");
 
       // Helper for making the request with the exact required Authorization Bearer header
       const doAnalyzeRequest = async (token: string) => {
@@ -453,35 +462,88 @@ export default function App() {
       // Clear the timeout once the response is received
       clearTimeout(timeoutId);
 
-      setAnalysisStatus("validating");
-      setProcessingProgress(85);
-
-      let data;
+      let data: any = null;
       try {
         const textResponse = await response.text();
-        try {
-          data = JSON.parse(textResponse);
-        } catch {
-          throw new Error(`O servidor retornou uma resposta inválida (não JSON). Código HTTP ${response.status}`);
+        if (textResponse && textResponse.trim()) {
+          try {
+            data = JSON.parse(textResponse);
+          } catch {
+            // Text is not JSON, handled gracefully below by HTTP status
+          }
         }
       } catch (readErr: any) {
-        throw new Error(readErr.message || "Falha ao ler resposta do servidor.");
+        console.warn("[Analysis] Failed to read response stream:", readErr);
       }
 
-      if (data.paywallRequired || data.error === "FREE_QUOTA_EXCEEDED") {
+      // 1. Paywall / Quota Exceeded (HTTP 403 or explicit quota payload)
+      if (
+        response.status === 403 ||
+        data?.paywallRequired ||
+        data?.error === "FREE_QUOTA_EXCEEDED" ||
+        data?.error === "QUOTA_EXCEEDED" ||
+        data?.error?.code === "FREE_QUOTA_EXCEEDED" ||
+        data?.errorCode === "FREE_QUOTA_EXCEEDED"
+      ) {
         setView("onboarding");
         setOnboardingStep(10);
-        openPaywall(data.message || "Você atingiu o limite de 1 diagnóstico gratuito no plano Free. Faça upgrade para o InstaScore PRO para realizar mais análises.");
+        setAnalysisStatus("idle");
+        openPaywall(
+          data?.message ||
+          data?.error?.message ||
+          "Você atingiu o limite de diagnóstico gratuito no plano Free. Faça upgrade para o InstaScore PRO para realizar diagnósticos ilimitados e desbloquear o ecossistema completo."
+        );
         return;
       }
 
-      if (!response.ok || !data.success) {
-        throw new Error(data.message || data.error || `Falha na análise. Código HTTP ${response.status}`);
+      // 2. Authentication failure (HTTP 401)
+      if (response.status === 401) {
+        setView("onboarding");
+        setOnboardingStep(10);
+        setAnalysisStatus("idle");
+        setErrorText(data?.message || data?.error?.message || "Sua sessão expirou ou não foi validada. Por favor, conecte-se com sua conta Google e tente novamente.");
+        return;
+      }
+
+      // 3. Payload Too Large (HTTP 413)
+      if (response.status === 413) {
+        setView("onboarding");
+        setOnboardingStep(10);
+        setAnalysisStatus("idle");
+        setErrorText("As capturas de tela enviadas excederam o tamanho suportado. Tente recortar ou usar capturas com resolução menor.");
+        return;
+      }
+
+      // 4. Rate limit (HTTP 429)
+      if (response.status === 429) {
+        setView("onboarding");
+        setOnboardingStep(10);
+        setAnalysisStatus("idle");
+        setErrorText(data?.message || data?.error?.message || "Muitas solicitações enviadas em curto intervalo. Aguarde alguns instantes e tente novamente.");
+        return;
+      }
+
+      // 5. Server/Pipeline Errors (504, 502, 500, 400)
+      if (!response.ok || !data || !data.success) {
+        const resolvedCode = data?.error?.code || (typeof data?.error === "string" ? data.error : null) || (response.status === 504 ? "AI_TIMEOUT" : response.status === 502 ? "AI_INVALID_RESPONSE" : response.status === 400 ? "IMAGEM_INVALIDA_OU_INSUFICIENTE" : "ANALYSIS_FAILED");
+        const resolvedMsg = data?.error?.message || data?.message || (response.status === 504 ? "A análise demorou além do limite. Tente novamente." : response.status === 502 ? "Resposta inválida ou incompleta dos modelos de IA. Tente novamente." : "Falha na análise estrutural. Sua quota foi preservada. Tente novamente.");
+
+        setErrorCode(resolvedCode);
+        setErrorText(resolvedMsg);
+        setAnalysisStatus("error");
+        return;
       }
 
       if (!data.diagnosis || !data.scoring) {
-        throw new Error("O servidor não retornou um diagnóstico válido.");
+        setErrorCode("AI_INVALID_RESPONSE");
+        setErrorText("O servidor não retornou um diagnóstico válido.");
+        setAnalysisStatus("error");
+        return;
       }
+
+      // Signal validating step before transitioning
+      setAnalysisStatus("validating");
+      setProcessingProgress(85);
 
       // Store results and set success state. Navigation happens after 100% completion delay
       setDiagnosisResult(data);
@@ -489,7 +551,7 @@ export default function App() {
         .then(m => m.saveDiagnosisToFirestore(data))
         .catch(err => console.warn('[Firebase] Save diagnosis warning:', err));
       
-      // Minimization & zero-persistence: purge base64 screenshots from memory immediately
+      // Minimization & zero-persistence: purge base64 screenshots from memory only upon successful result
       setPrint1(undefined);
       setPrint2(undefined);
       setPrint3(undefined);
@@ -501,9 +563,11 @@ export default function App() {
       
       setAnalysisStatus("error");
       if (err.name === "AbortError" || err.message?.toLowerCase().includes("aborted")) {
-        setErrorText("A análise demorou mais que o esperado (tempo limite esgotado). Por favor, tente novamente.");
+        setErrorCode("AI_TIMEOUT");
+        setErrorText("A análise demorou além do limite. Tente novamente.");
       } else {
-        setErrorText(err.message || "Erro de conexão com o servidor. Verifique os dados e tente novamente.");
+        setErrorCode("ANALYSIS_FAILED");
+        setErrorText(err.message || "Erro de conexão com o servidor. Sua quota foi preservada. Tente novamente.");
       }
     }
   };
@@ -1240,22 +1304,24 @@ export default function App() {
         {view === "processing" && (
           <div className="w-full">
             {analysisStatus === "error" ? (
-              <div id="processing-error-container" role="alert" aria-live="assertive" className="max-w-md w-full mx-auto text-center py-10 space-y-8 animate-fade-in">
+              <div id="processing-error-container" role="alert" aria-live="assertive" className="max-w-md w-full mx-auto text-center py-10 space-y-6 animate-fade-in">
                 <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-rose-950/50 border border-rose-800/50 text-rose-500 mx-auto">
                   <AlertCircle size={32} aria-hidden="true" />
                 </div>
 
                 <div className="space-y-3">
                   <h2 className="text-xl font-bold text-white">Não conseguimos concluir a análise</h2>
-                  <p className="text-sm text-slate-400 leading-relaxed">
-                    {errorText || "Ocorreu um erro desconhecido ao processar o seu diagnóstico."}
+                  <p className="text-sm text-slate-300 leading-relaxed">
+                    {errorText || "Ocorreu uma instabilidade durante a análise do seu perfil. Seus dados e sua quota foram preservados."}
                   </p>
-                  <p className="text-xs text-rose-400/80 font-mono select-all">
-                    Erro: {errorText?.includes("API_KEY_MISSING") ? "API_KEY_MISSING" : errorText?.includes("resposta incompleta") ? "ANALYSIS_VALIDATION_FAILED" : "ANALYSIS_FAILED"}
-                  </p>
+                  {errorCode && (
+                    <div className="inline-block px-3 py-1 rounded-md bg-slate-900 border border-slate-800 text-[11px] text-rose-400 font-mono select-all">
+                      Código: {errorCode}
+                    </div>
+                  )}
                 </div>
 
-                <div className="flex flex-col sm:flex-row gap-3 justify-center pt-4">
+                <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
                   <button
                     type="button"
                     onClick={handleGenerateDiagnosis}
@@ -1318,46 +1384,46 @@ export default function App() {
                   </div>
 
                   <div className="space-y-2.5 pt-1">
-                    <div className="flex items-center gap-3 text-emerald-400 font-medium transition-all">
-                      <CheckCircle size={15} className="shrink-0" />
-                      <span>Bio & posicionamento analisados</span>
-                    </div>
-
-                    <div className="flex items-center gap-3 text-emerald-400 font-medium transition-all">
-                      <CheckCircle size={15} className="shrink-0" />
-                      <span>Feed & estratégia temática verificados</span>
-                    </div>
-
-                    <div className="flex items-center gap-3 text-emerald-400 font-medium transition-all">
-                      <CheckCircle size={15} className="shrink-0" />
-                      <span>SEO & termos de busca identificados</span>
-                    </div>
-
-                    <div className={`flex items-center gap-3 transition-all ${processingProgress >= 60 ? "text-[#FF5E36] font-bold" : "text-slate-500"}`}>
-                      {processingProgress >= 60 ? (
+                    <div className={`flex items-center gap-3 transition-all ${processingProgress >= 20 ? "text-emerald-400 font-medium" : "text-[#FF5E36] font-bold"}`}>
+                      {processingProgress >= 20 ? (
+                        <CheckCircle size={15} className="shrink-0 text-emerald-400" />
+                      ) : (
                         <RefreshCw size={15} className="animate-spin text-[#FF5E36] shrink-0" />
+                      )}
+                      <span>Validação de capturas e sessão segura</span>
+                    </div>
+
+                    <div className={`flex items-center gap-3 transition-all ${processingProgress >= 80 ? "text-emerald-400 font-medium" : processingProgress >= 20 ? "text-[#E1306C] font-bold" : "text-slate-500"}`}>
+                      {processingProgress >= 80 ? (
+                        <CheckCircle size={15} className="shrink-0 text-emerald-400" />
+                      ) : processingProgress >= 20 ? (
+                        <RefreshCw size={15} className="animate-spin text-[#E1306C] shrink-0" />
                       ) : (
                         <div className="w-3.5 h-3.5 rounded-full border border-slate-700 shrink-0"></div>
                       )}
-                      <span>Calculando dimensão C.A.G.E...</span>
+                      <span>Visão computacional e leitura multimodal de perfil</span>
                     </div>
 
-                    <div className={`flex items-center gap-3 transition-all ${processingProgress >= 80 ? "text-[#FA26A0] font-bold" : "text-slate-500"}`}>
-                      {processingProgress >= 80 ? (
+                    <div className={`flex items-center gap-3 transition-all ${processingProgress >= 90 ? "text-emerald-400 font-medium" : processingProgress >= 80 ? "text-[#FA26A0] font-bold" : "text-slate-500"}`}>
+                      {processingProgress >= 90 ? (
+                        <CheckCircle size={15} className="shrink-0 text-emerald-400" />
+                      ) : processingProgress >= 80 ? (
                         <RefreshCw size={15} className="animate-spin text-[#FA26A0] shrink-0" />
                       ) : (
                         <div className="w-3.5 h-3.5 rounded-full border border-slate-700 shrink-0"></div>
                       )}
-                      <span>Mapeando prioridades de alto impacto...</span>
+                      <span>Cálculo determinístico das 25 métricas C.A.G.E.</span>
                     </div>
 
-                    <div className={`flex items-center gap-3 transition-all ${processingProgress >= 90 ? "text-[#C084FC] font-bold" : "text-slate-500"}`}>
-                      {processingProgress >= 90 ? (
+                    <div className={`flex items-center gap-3 transition-all ${processingProgress >= 100 ? "text-emerald-400 font-medium" : processingProgress >= 90 ? "text-[#C084FC] font-bold" : "text-slate-500"}`}>
+                      {processingProgress >= 100 ? (
+                        <CheckCircle size={15} className="shrink-0 text-emerald-400" />
+                      ) : processingProgress >= 90 ? (
                         <RefreshCw size={15} className="animate-spin text-[#C084FC] shrink-0" />
                       ) : (
                         <div className="w-3.5 h-3.5 rounded-full border border-slate-700 shrink-0"></div>
                       )}
-                      <span>Construindo plano estratégico do OS...</span>
+                      <span>Mapeamento de prioridades e plano estratégico do OS</span>
                     </div>
                   </div>
                 </div>

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Crown, Sparkles, CheckCircle2, AlertCircle, ArrowUpRight, ShieldCheck, Zap, XCircle } from 'lucide-react';
 import { useEntitlements } from '../hooks/useEntitlements';
+import { getAuthIdToken } from '../lib/firebase';
 
 interface MyPlanViewProps {
   onOpenPaywall: () => void;
@@ -19,9 +20,14 @@ export const MyPlanView: React.FC<MyPlanViewProps> = ({ onOpenPaywall, onBack })
 
     setCanceling(true);
     try {
+      const token = await getAuthIdToken().catch(() => null);
       const res = await fetch('/api/subscription/cancel', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+          'x-user-id': userId
+        },
         body: JSON.stringify({ userId })
       });
 
@@ -207,3 +213,5 @@ export const MyPlanView: React.FC<MyPlanViewProps> = ({ onOpenPaywall, onBack })
     </div>
   );
 };
+
+export default MyPlanView;

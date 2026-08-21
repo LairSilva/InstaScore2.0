@@ -282,6 +282,91 @@ async function runSecurityTestSuite() {
   // Restore env
   process.env = originalEnv;
 
+  // -------------------------------------------------------------
+  // TEST 13: Annual Plan Pricing S2S Validation (R$ 349,90 vs R$ 399,00)
+  // -------------------------------------------------------------
+  console.log("\n🧪 Teste 13: Validação S2S do Plano Anual oficial (R$ 349,90) e rejeição do legado (R$ 399,00)");
+  const userIdAnnual = "user_sec_test_annual_" + Date.now();
+  const sessionAnnual = await createCheckoutSessionServer({
+    userId: userIdAnnual,
+    planId: "PRO",
+    cycle: "annual",
+    paymentMethod: "pix"
+  });
+
+  assert(sessionAnnual.amount === 349.90, "Checkout session anual deve ter valor oficial R$ 349,90", `amount=${sessionAnnual.amount}`);
+
+  // Test legacy 399.00 payment rejection
+  const legacyPaymentId = "pay_legacy_399_" + Date.now();
+  const legacyFixture = {
+    id: legacyPaymentId,
+    status: "approved",
+    currency_id: "BRL",
+    transaction_amount: 399.00, // Legacy price must be rejected
+    metadata: {
+      user_id: userIdAnnual,
+      session_id: sessionAnnual.sessionId,
+      plan_id: "PRO",
+      cycle: "annual"
+    }
+  };
+
+  const legacyS2S = await verifyMercadoPagoPaymentS2S({
+    providerPaymentId: legacyPaymentId,
+    expectedSessionId: sessionAnnual.sessionId,
+    fixturePayment: legacyFixture
+  });
+  assert(
+    !legacyS2S.verified && (legacyS2S.errorCode === "PRICE_MISMATCH" || legacyS2S.errorCode === "AMOUNT_MISMATCH"),
+    "Deve rejeitar pagamento legado de R$ 399,00 com PRICE_MISMATCH quando o oficial é R$ 349,90",
+    `errorCode=${legacyS2S.errorCode}`
+  );
+
+  // Test official 349.90 payment approval
+  const officialAnnualPaymentId = "pay_official_349_" + Date.now();
+  const officialAnnualFixture = {
+    id: officialAnnualPaymentId,
+    status: "approved",
+    currency_id: "BRL",
+    transaction_amount: 349.90,
+    metadata: {
+      user_id: userIdAnnual,
+      session_id: sessionAnnual.sessionId,
+      plan_id: "PRO",
+      cycle: "annual"
+    }
+  };
+
+  const officialS2S = await verifyMercadoPagoPaymentS2S({
+    providerPaymentId: officialAnnualPaymentId,
+    expectedSessionId: sessionAnnual.sessionId,
+    fixturePayment: officialAnnualFixture
+  });
+  assert(officialS2S.verified, "Deve aprovar pagamento oficial de R$ 349,90 no plano Anual", officialS2S.errorMessage);
+
+  // -------------------------------------------------------------
+  // TEST 14: Annual Webhook Execution & 365 Days Duration
+  // -------------------------------------------------------------
+  console.log("\n🧪 Teste 14: Processamento Webhook Anual e cálculo de expiração de 365 dias");
+  const annualEvtId = "evt_annual_approved_" + Date.now();
+  const annualWebhookRes = await processWebhookEvent({
+    eventId: annualEvtId,
+    eventType: "payment.approved",
+    providerPaymentId: officialAnnualPaymentId,
+    fixturePayment: officialAnnualFixture
+  });
+
+  const subAnnual = await getSubscription(userIdAnnual);
+  assert(
+    annualWebhookRes.success &&
+    annualWebhookRes.processed &&
+    subAnnual.plan === "PRO" &&
+    subAnnual.cycle === "annual" &&
+    subAnnual.status === "active",
+    "Deve promover para PRO Anual ativo com sucesso",
+    `plan=${subAnnual.plan}, cycle=${subAnnual.cycle}`
+  );
+
   console.log("\n=================================================");
   console.log(`  RESULTADO DOS TESTES: ${passed} PASSOU, ${failed} FALHOU`);
   console.log("=================================================\n");

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { auth, ensureAuthUser } from '../lib/firebase';
+import { auth, ensureAuthUser, getAuthIdToken } from '../lib/firebase';
 import { PlanType, EntitlementKey, PLANS, PlanConfig } from '../config/plans';
 
 export interface SubscriptionState {
@@ -30,9 +30,11 @@ export function useEntitlements() {
     try {
       const uid = await ensureAuthUser();
       setUserId(uid);
+      const token = await getAuthIdToken().catch(() => null);
 
       const res = await fetch(`/api/subscription/status?userId=${uid}`, {
         headers: {
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
           'x-user-id': uid
         }
       });

@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Sparkles, Check, QrCode, CreditCard, X, ArrowRight, Lock, Loader2, CheckCircle2, AlertCircle, ExternalLink, RefreshCw } from 'lucide-react';
+import { ShieldCheck, Sparkles, Check, QrCode, CreditCard, X, ArrowRight, Lock, Loader2, CheckCircle2, AlertCircle, ExternalLink, RefreshCw, LogIn } from 'lucide-react';
 import { PLANS } from '../config/plans';
 import { useAccessibleModal } from '../hooks/useAccessibleModal';
-import { getAuthIdToken, ensureAuthUser, auth } from '../lib/firebase';
+import { getAuthIdToken, ensureAuthUser, auth, loginWithGoogle, getOrEnsureAuthUser } from '../lib/firebase';
+import { apiFetch, ApiError } from '../lib/api-client';
 
 interface PaywallModalProps {
   isOpen: boolean;
   onClose: () => void;
-  userId: string;
+  userId?: string;
   reason?: string;
   onSuccess: () => void;
 }
@@ -25,13 +26,14 @@ interface ActiveSessionData {
 export const PaywallModal: React.FC<PaywallModalProps> = ({
   isOpen,
   onClose,
-  userId,
   reason,
   onSuccess
 }) => {
   const [cycle, setCycle] = useState<'monthly' | 'annual'>('monthly');
   const [paymentMethod, setPaymentMethod] = useState<'pix' | 'card'>('pix');
   const [loading, setLoading] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [currentUser, setCurrentUser] = useState(auth.currentUser);
   const [error, setError] = useState<string | null>(null);
   const [activeSession, setActiveSession] = useState<ActiveSessionData | null>(null);
   const [copiedPix, setCopiedPix] = useState(false);
@@ -43,6 +45,17 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
     onClose,
   });
 
+  // Track Firebase Auth State
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      setCurrentUser(user);
+      if (user) {
+        setError(null);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
   // Status Polling Effect when any checkout session is active
   useEffect(() => {
     let intervalId: any;
@@ -52,24 +65,17 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
 
       const checkPaymentStatus = async () => {
         try {
-          const token = await getAuthIdToken().catch(() => null);
-          const res = await fetch(`/api/checkout/status?sessionId=${activeSession.sessionId}&userId=${userId}`, {
-            headers: {
-              ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-              'x-user-id': userId
-            }
-          });
+          const data = await apiFetch<{ success: boolean; isPro?: boolean; status?: string }>(
+            `/api/checkout/status?sessionId=${activeSession.sessionId}`
+          );
 
-          if (res.ok) {
-            const data = await res.json();
-            if (data.isPro || data.status === 'approved') {
-              setIsApproved(true);
-              clearInterval(intervalId);
-              setTimeout(() => {
-                onSuccess();
-                onClose();
-              }, 1500);
-            }
+          if (data && (data.isPro || data.status === 'approved')) {
+            setIsApproved(true);
+            if (intervalId) clearInterval(intervalId);
+            setTimeout(() => {
+              onSuccess();
+              onClose();
+            }, 1500);
           }
         } catch (err) {
           console.warn('[Checkout Status Poll Error]', err);
@@ -84,7 +90,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
     return () => {
       if (intervalId) clearInterval(intervalId);
     };
-  }, [isOpen, activeSession?.sessionId, isApproved, userId, onSuccess, onClose]);
+  }, [isOpen, activeSession?.sessionId, isApproved, onSuccess, onClose]);
 
   // Reset internal states when opened
   useEffect(() => {
@@ -92,6 +98,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
       setError(null);
       setIsApproved(false);
       setCopiedPix(false);
+      setCurrentUser(auth.currentUser);
     }
   }, [isOpen]);
 
@@ -99,40 +106,70 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
 
   const selectedPrice = cycle === 'annual' ? PLANS.PRO.formattedPriceAnnual : PLANS.PRO.formattedPriceMonthly;
 
+  const handleGoogleLogin = async () => {
+    setIsLoggingIn(true);
+    setError(null);
+    try {
+      const user = await loginWithGoogle();
+      if (user) {
+        setCurrentUser(user);
+      }
+    } catch (err: any) {
+      console.warn('[Login Error]', err);
+      setError(err?.message || 'Falha ao conectar com o Google. Tente novamente.');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
   const handleStartCheckout = async () => {
     setLoading(true);
     setError(null);
 
     try {
-      let token = '';
-      try {
-        token = await getAuthIdToken();
-      } catch {
-        const uid = await ensureAuthUser().catch(() => null);
-        if (uid) {
-          token = await getAuthIdToken().catch(() => '');
-        }
+      // 1. Ensure active Firebase session exists before calling API
+      let user = auth.currentUser;
+      if (!user) {
+        user = await getOrEnsureAuthUser();
       }
 
-      const res = await fetch('/api/checkout/create-session', {
+      if (!user) {
+        setError('Conecte-se para continuar');
+        setLoading(false);
+        return;
+      }
+
+      // 2. Retrieve Firebase ID Token
+      const token = await user.getIdToken();
+      if (!token) {
+        throw new Error('Sessão Firebase não disponível. Por favor, conecte-se com sua conta Google para continuar.');
+      }
+
+      // 3. Centralized API fetch call with exact Bearer token header and server-side calculation
+      const data = await apiFetch<{
+        success: boolean;
+        sessionId: string;
+        checkoutUrl?: string;
+        pixQrCodeText?: string;
+        pixQrCodeBase64?: string;
+        amount?: number;
+        formattedPrice?: string;
+        message?: string;
+        error?: string;
+      }>('/api/checkout/create-session', {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-          'x-user-id': userId
+        headers: {
+          Authorization: `Bearer ${token}`
         },
         body: JSON.stringify({
-          userId,
           planId: 'PRO',
           cycle,
           paymentMethod,
-          userEmail: auth?.currentUser?.email || undefined
+          userEmail: user.email || undefined
         })
       });
 
-      const data = await res.json().catch(() => null);
-
-      if (res.ok && data?.success) {
+      if (data?.success && data?.sessionId) {
         setActiveSession({
           sessionId: data.sessionId,
           paymentMethod,
@@ -143,7 +180,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
           formattedPrice: data.formattedPrice
         });
 
-        // If card checkout URL is returned, attempt opening
+        // If card checkout URL is returned, attempt opening in a new tab
         if (paymentMethod === 'card' && data.checkoutUrl) {
           try {
             window.open(data.checkoutUrl, '_blank', 'noopener,noreferrer');
@@ -226,7 +263,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
           <div className="mb-4 p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs sm:text-sm flex items-start gap-2.5" role="alert">
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
             <div className="flex-1">
-              <span className="font-semibold block">Erro ao iniciar pagamento:</span>
+              <span className="font-semibold block">Aviso:</span>
               <span>{error}</span>
             </div>
           </div>
@@ -347,23 +384,49 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
               </button>
             </div>
 
-            <button
-              onClick={handleStartCheckout}
-              disabled={loading}
-              className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-indigo-500 to-emerald-500 hover:from-indigo-600 hover:to-emerald-600 text-white font-semibold text-base shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2 transition-all disabled:opacity-50 cursor-pointer min-h-[48px]"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  <span>Gerando checkout seguro...</span>
-                </>
-              ) : (
-                <>
-                  <span>Desbloquear Acesso Pro Agora</span>
-                  <ArrowRight className="w-5 h-5" />
-                </>
-              )}
-            </button>
+            {!currentUser ? (
+              <div className="space-y-3">
+                <div className="p-3 bg-slate-950/80 border border-slate-800 rounded-2xl text-center text-xs text-slate-300">
+                  <p>Conecte-se para continuar e vincular sua assinatura com segurança à sua conta.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleGoogleLogin}
+                  disabled={isLoggingIn}
+                  className="w-full py-3.5 px-6 rounded-2xl bg-white hover:bg-slate-100 text-slate-900 font-semibold text-base shadow-lg flex items-center justify-center gap-2 transition-all disabled:opacity-50 cursor-pointer min-h-[48px]"
+                >
+                  {isLoggingIn ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <span>Conectando com o Google...</span>
+                    </>
+                  ) : (
+                    <>
+                      <LogIn className="w-5 h-5" />
+                      <span>Conectar com Google para Continuar</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={handleStartCheckout}
+                disabled={loading}
+                className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-indigo-500 to-emerald-500 hover:from-indigo-600 hover:to-emerald-600 text-white font-semibold text-base shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2 transition-all disabled:opacity-50 cursor-pointer min-h-[48px]"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <span>Gerando checkout seguro...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Desbloquear Acesso Pro Agora</span>
+                    <ArrowRight className="w-5 h-5" />
+                  </>
+                )}
+              </button>
+            )}
           </div>
         ) : isApproved ? (
           <div className="bg-emerald-500/10 border border-emerald-500/30 p-8 rounded-2xl text-center space-y-3">

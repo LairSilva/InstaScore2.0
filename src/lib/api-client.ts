@@ -16,14 +16,20 @@ export class ApiError extends Error {
 
 /**
  * Robust authenticated fetch client that handles Firebase ID Tokens,
- * automatic error categorization, and graceful error messages.
+ * controlled 401 token refresh retry (max 1 retry), automatic error categorization,
+ * and strict prohibition of x-user-id headers.
  */
 export async function apiFetch<T = any>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  isRetry: boolean = false
 ): Promise<T> {
   const headers = new Headers(options.headers || {});
   
+  // Strictly remove any client-supplied x-user-id header to ensure zero identity spoofing
+  headers.delete("x-user-id");
+  headers.delete("X-User-Id");
+
   // Set default JSON Content-Type if body is present and not multipart
   if (options.body && !(options.body instanceof FormData) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
@@ -55,8 +61,21 @@ export async function apiFetch<T = any>(
     );
   }
 
-  // Handle token expiration / unauthorized
+  // Handle token expiration / unauthorized with controlled 1-time retry
   if (res.status === 401) {
+    if (!isRetry) {
+      try {
+        const freshToken = await getAuthIdToken(true);
+        if (freshToken) {
+          const retryHeaders = new Headers(headers);
+          retryHeaders.set("Authorization", `Bearer ${freshToken}`);
+          return await apiFetch<T>(endpoint, { ...options, headers: retryHeaders }, true);
+        }
+      } catch (refreshErr) {
+        console.warn("[apiFetch] Token refresh attempt failed on 401:", refreshErr);
+      }
+    }
+
     let errBody: any = null;
     try {
       errBody = await res.json();

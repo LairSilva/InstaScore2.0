@@ -2,7 +2,9 @@ import {
   createCheckoutSessionServer, 
   validateWebhookSignature, 
   processWebhookEvent,
-  verifyMercadoPagoPaymentS2S
+  verifyMercadoPagoPaymentS2S,
+  validateAndBuildWebhookNotificationUrl,
+  STAGING_APP_URL
 } from "../../src/lib/billing-server";
 import { PLANS } from "../../src/config/plans";
 import crypto from "crypto";
@@ -80,7 +82,123 @@ export async function runCheckoutWebhookIntegrationTests(): Promise<{ passed: nu
     }
   });
 
-  // 4. S2S validation for Annual Plan: accepts 349.90, rejects old 399.00
+  // 4. Notification URL: Valid Staging URL
+  await test("validateAndBuildWebhookNotificationUrl accepts official staging URL and constructs valid HTTPS webhook notification_url", () => {
+    const res = validateAndBuildWebhookNotificationUrl(STAGING_APP_URL);
+    if (!res.valid) {
+      throw new Error(`Expected valid staging URL result, got error: ${res.error}`);
+    }
+    if (res.notificationUrl !== "https://ais-pre-kjyykzi73x3httzdxpoy6q-162439389760.us-east1.run.app/api/webhook/payment") {
+      throw new Error(`Expected exact staging notification_url, got: ${res.notificationUrl}`);
+    }
+    if (res.baseUrl !== "https://ais-pre-kjyykzi73x3httzdxpoy6q-162439389760.us-east1.run.app") {
+      throw new Error(`Expected exact staging baseUrl, got: ${res.baseUrl}`);
+    }
+  });
+
+  // 5. Notification URL: Valid custom production HTTPS URL
+  await test("validateAndBuildWebhookNotificationUrl accepts custom valid production HTTPS APP_URL", () => {
+    const res = validateAndBuildWebhookNotificationUrl("https://instascore.ai");
+    if (!res.valid) {
+      throw new Error(`Expected valid production URL, got error: ${res.error}`);
+    }
+    if (res.notificationUrl !== "https://instascore.ai/api/webhook/payment") {
+      throw new Error(`Expected notification_url 'https://instascore.ai/api/webhook/payment', got: ${res.notificationUrl}`);
+    }
+    if (res.baseUrl !== "https://instascore.ai") {
+      throw new Error(`Expected baseUrl 'https://instascore.ai', got: ${res.baseUrl}`);
+    }
+  });
+
+  // 6. Notification URL: Missing / empty candidate
+  await test("validateAndBuildWebhookNotificationUrl rejects empty candidate string", () => {
+    const res = validateAndBuildWebhookNotificationUrl("");
+    if (res.valid) {
+      throw new Error("Expected empty string candidate to be invalid");
+    }
+    if (res.errorCode !== "APP_URL_MISSING") {
+      throw new Error(`Expected APP_URL_MISSING error code, got: ${res.errorCode}`);
+    }
+  });
+
+  // 7. Notification URL: Missing protocol (e.g. without https://)
+  await test("validateAndBuildWebhookNotificationUrl rejects URL without protocol", () => {
+    const res = validateAndBuildWebhookNotificationUrl("ais-pre-kjyykzi73x3httzdxpoy6q-162439389760.us-east1.run.app");
+    if (res.valid) {
+      throw new Error("Expected URL without protocol to be invalid");
+    }
+    if (res.errorCode !== "INVALID_APP_URL_FORMAT" && res.errorCode !== "INVALID_PROTOCOL") {
+      throw new Error(`Expected INVALID_APP_URL_FORMAT or INVALID_PROTOCOL, got: ${res.errorCode}`);
+    }
+  });
+
+  // 8. Notification URL: Localhost & 127.0.0.1 rejection
+  await test("validateAndBuildWebhookNotificationUrl rejects localhost and 127.0.0.1 URLs", () => {
+    const resLocalhost = validateAndBuildWebhookNotificationUrl("http://localhost:3000");
+    if (resLocalhost.valid) {
+      throw new Error("Expected localhost URL to be rejected");
+    }
+    if (resLocalhost.errorCode !== "INVALID_APP_URL" && resLocalhost.errorCode !== "INVALID_PROTOCOL") {
+      throw new Error(`Expected INVALID_APP_URL or INVALID_PROTOCOL for localhost, got: ${resLocalhost.errorCode}`);
+    }
+
+    const resIp = validateAndBuildWebhookNotificationUrl("https://127.0.0.1:3000");
+    if (resIp.valid) {
+      throw new Error("Expected 127.0.0.1 URL to be rejected");
+    }
+    if (resIp.errorCode !== "INVALID_APP_URL") {
+      throw new Error(`Expected INVALID_APP_URL for 127.0.0.1, got: ${resIp.errorCode}`);
+    }
+  });
+
+  // 9. Notification URL: Undefined / Null / Spaces rejection
+  await test("validateAndBuildWebhookNotificationUrl rejects candidate containing undefined, null, or spaces", () => {
+    const resUndefined = validateAndBuildWebhookNotificationUrl("https://undefined.com/api");
+    if (resUndefined.valid) {
+      throw new Error("Expected candidate with 'undefined' to be rejected");
+    }
+
+    const resNull = validateAndBuildWebhookNotificationUrl("https://instascore.ai/null");
+    if (resNull.valid) {
+      throw new Error("Expected candidate with 'null' to be rejected");
+    }
+
+    const resSpaces = validateAndBuildWebhookNotificationUrl("https://insta score.ai");
+    if (resSpaces.valid) {
+      throw new Error("Expected candidate with spaces to be rejected");
+    }
+  });
+
+  // 10. Notification URL: Hostname without domain extension / single word hostname
+  await test("validateAndBuildWebhookNotificationUrl rejects invalid hostnames without top-level domain", () => {
+    const res = validateAndBuildWebhookNotificationUrl("https://internalhost/api");
+    if (res.valid) {
+      throw new Error("Expected hostname without dot to be rejected");
+    }
+    if (res.errorCode !== "INVALID_HOSTNAME") {
+      throw new Error(`Expected INVALID_HOSTNAME, got: ${res.errorCode}`);
+    }
+  });
+
+  // 11. createCheckoutSessionServer fails with 503 when invalid appUrl is supplied
+  await test("createCheckoutSessionServer returns 503 error when candidate appUrl is invalid", async () => {
+    try {
+      await createCheckoutSessionServer({
+        userId: "test_user_invalid_url",
+        planId: "PRO",
+        cycle: "monthly",
+        paymentMethod: "pix",
+        appUrl: "http://localhost:3000"
+      });
+      throw new Error("createCheckoutSessionServer should have thrown 503 for localhost appUrl");
+    } catch (err: any) {
+      if (err.status !== 503) {
+        throw new Error(`Expected status 503, got: ${err.status}`);
+      }
+    }
+  });
+
+  // 12. S2S validation for Annual Plan: accepts 349.90, rejects old 399.00
   await test("verifyMercadoPagoPaymentS2S accepts official annual 349.90 and rejects legacy 399.00 with PRICE_MISMATCH", async () => {
     const testUser = "test_user_annual_s2s_" + Date.now();
     const session = await createCheckoutSessionServer({
@@ -138,7 +256,7 @@ export async function runCheckoutWebhookIntegrationTests(): Promise<{ passed: nu
     }
   });
 
-  // 5. Missing Webhook Secret Handling
+  // 13. Missing Webhook Secret Handling
   await test("validateWebhookSignature returns 503 WEBHOOK_SECRET_UNCONFIGURED when webhook secret is missing", () => {
     const validHeaders = {
       "x-signature": `ts=123456789,v1=abcdef0123456789`,
@@ -156,7 +274,7 @@ export async function runCheckoutWebhookIntegrationTests(): Promise<{ passed: nu
     }
   });
 
-  // 6. Webhook signature validation (Tamper and Forgery rejection)
+  // 14. Webhook signature validation (Tamper and Forgery rejection)
   await test("validateWebhookSignature validates authentic signatures and rejects forged requests", () => {
     const secret = "test_webhook_secret_key_12345";
     const dataId = "pay_123456";
@@ -187,7 +305,7 @@ export async function runCheckoutWebhookIntegrationTests(): Promise<{ passed: nu
     }
   });
 
-  // 7. Idempotent webhook event processing
+  // 15. Idempotent webhook event processing
   await test("processWebhookEvent processes payment.succeeded event idempotently", async () => {
     const eventPayload = {
       eventId: "evt_test_unique_idempotent_999",
@@ -206,6 +324,55 @@ export async function runCheckoutWebhookIntegrationTests(): Promise<{ passed: nu
     const secondRun = await processWebhookEvent(eventPayload);
     if (!secondRun.success) {
       throw new Error("Idempotent check failed on duplicate event execution");
+    }
+  });
+
+  // 16. All 4 Checkout Variants: Monthly Pix, Monthly Card, Annual Pix, Annual Card
+  await test("createCheckoutSessionServer handles all 4 payment variants (Monthly/Annual x Pix/Card) accurately", async () => {
+    const testUser = "test_user_all_variants_" + Date.now();
+
+    // Variant 1: Monthly Pix
+    const v1 = await createCheckoutSessionServer({
+      userId: testUser,
+      planId: "PRO",
+      cycle: "monthly",
+      paymentMethod: "pix"
+    });
+    if (v1.amount !== 39.90 || !v1.pixQrCodeText || !v1.pixQrCodeBase64) {
+      throw new Error("Monthly Pix variant failed contract validation");
+    }
+
+    // Variant 2: Monthly Card
+    const v2 = await createCheckoutSessionServer({
+      userId: testUser,
+      planId: "PRO",
+      cycle: "monthly",
+      paymentMethod: "card"
+    });
+    if (v2.amount !== 39.90 || !v2.checkoutUrl) {
+      throw new Error("Monthly Card variant failed contract validation");
+    }
+
+    // Variant 3: Annual Pix
+    const v3 = await createCheckoutSessionServer({
+      userId: testUser,
+      planId: "PRO",
+      cycle: "annual",
+      paymentMethod: "pix"
+    });
+    if (v3.amount !== 349.90 || !v3.pixQrCodeText || !v3.pixQrCodeBase64) {
+      throw new Error("Annual Pix variant failed contract validation");
+    }
+
+    // Variant 4: Annual Card
+    const v4 = await createCheckoutSessionServer({
+      userId: testUser,
+      planId: "PRO",
+      cycle: "annual",
+      paymentMethod: "card"
+    });
+    if (v4.amount !== 349.90 || !v4.checkoutUrl) {
+      throw new Error("Annual Card variant failed contract validation");
     }
   });
 

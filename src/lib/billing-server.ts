@@ -1,11 +1,33 @@
 import { PLANS, PlanType, EntitlementKey, getPlanConfig, hasEntitlement, calculateEstimatedAiCost } from '../config/plans';
-import { getFirebaseAdminFirestore } from '../server/auth/firebase-admin';
+import { getFirebaseAdminFirestore, resolveProjectId, resolveFirestoreDatabaseId } from '../server/auth/firebase-admin';
 import { calculateRetentionUntil, RETENTION_POLICIES } from './data-retention';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
 export const SCHEMA_VERSION = 1;
+
+/**
+ * Structured 503 error class for billing & database unavailabilities in production.
+ */
+export class BillingUnavailableError extends Error {
+  public readonly code: 'FIRESTORE_CONFIG_MISSING' | 'BILLING_UNAVAILABLE';
+  public readonly status: number;
+  public readonly details?: any;
+
+  constructor(code: 'FIRESTORE_CONFIG_MISSING' | 'BILLING_UNAVAILABLE', message: string, details?: any) {
+    super(message);
+    this.name = 'BillingUnavailableError';
+    this.code = code;
+    this.status = 503;
+    this.details = details;
+    Object.setPrototypeOf(this, BillingUnavailableError.prototype);
+  }
+}
+
+export function isProductionEnvironment(): boolean {
+  return process.env.NODE_ENV === 'production';
+}
 
 export interface SubscriptionRecord {
   userId: string;
@@ -153,6 +175,55 @@ const storeLock = new AsyncLock();
 let inMemoryStore: DurableStore | null = null;
 let firestoreDisabled = false;
 
+export function setFirestoreDisabled(disabled: boolean): void {
+  firestoreDisabled = disabled;
+}
+
+export function isFirestoreDisabled(): boolean {
+  return firestoreDisabled;
+}
+
+export function getActivePersistenceBackend(): {
+  type: 'firestore' | 'local_store_dev';
+  projectId: string;
+  databaseId: string;
+  isProduction: boolean;
+  status: 'online' | 'degraded_dev_fallback' | 'unavailable_fail_closed';
+} {
+  const isProd = isProductionEnvironment();
+  const adminDb = getFirebaseAdminFirestore();
+  const projectId = resolveProjectId();
+  const databaseId = resolveFirestoreDatabaseId();
+
+  if (adminDb && !firestoreDisabled) {
+    return {
+      type: 'firestore',
+      projectId: projectId ? `${projectId.substring(0, 12)}...` : 'unknown',
+      databaseId: databaseId ? `${databaseId.substring(0, 12)}...` : 'unknown',
+      isProduction: isProd,
+      status: 'online'
+    };
+  }
+
+  if (isProd) {
+    return {
+      type: 'firestore',
+      projectId: projectId ? `${projectId.substring(0, 12)}...` : 'unknown',
+      databaseId: databaseId ? `${databaseId.substring(0, 12)}...` : 'unknown',
+      isProduction: true,
+      status: 'unavailable_fail_closed'
+    };
+  }
+
+  return {
+    type: 'local_store_dev',
+    projectId: 'local-dev-store',
+    databaseId: 'local-dev-db',
+    isProduction: false,
+    status: 'degraded_dev_fallback'
+  };
+}
+
 export function initLocalStore(): DurableStore {
   if (inMemoryStore) return inMemoryStore;
 
@@ -231,63 +302,87 @@ function sanitizePaymentPayload(payload: any): any {
 export async function getSubscription(userId: string): Promise<SubscriptionRecord> {
   if (!userId) userId = 'anonymous';
   const now = Date.now();
+  const isProd = isProductionEnvironment();
 
   // 1. Try Firestore Transaction
   if (!firestoreDisabled) {
-    try {
-      const db = getFirebaseAdminFirestore();
-      const subRef = db.collection('subscriptions').doc(userId);
+    const db = getFirebaseAdminFirestore();
+    if (!db) {
+      firestoreDisabled = true;
+      if (isProd) {
+        throw new BillingUnavailableError(
+          'FIRESTORE_CONFIG_MISSING',
+          'Firestore Admin não configurado no servidor em ambiente de produção (fail-closed).'
+        );
+      }
+    } else {
+      try {
+        const subRef = db.collection('subscriptions').doc(userId);
 
-      return await db.runTransaction(async (t) => {
-        const doc = await t.get(subRef);
+        return await db.runTransaction(async (t) => {
+          const doc = await t.get(subRef);
 
-        if (!doc.exists) {
-          const defaultSub: SubscriptionRecord = {
-            userId,
-            plan: 'FREE',
-            status: 'active',
-            cycle: 'monthly',
-            provider: 'mercadopago',
-            subscriptionId: `sub_free_${userId}`,
-            currentPeriodStart: now,
-            currentPeriodEnd: now + 365 * 24 * 60 * 60 * 1000,
-            cancelAtPeriodEnd: false,
-            createdAt: now,
-            updatedAt: now,
-            expiresAt: now + 365 * 24 * 60 * 60 * 1000,
-            schemaVersion: SCHEMA_VERSION
-          };
+          if (!doc.exists) {
+            const defaultSub: SubscriptionRecord = {
+              userId,
+              plan: 'FREE',
+              status: 'active',
+              cycle: 'monthly',
+              provider: 'mercadopago',
+              subscriptionId: `sub_free_${userId}`,
+              currentPeriodStart: now,
+              currentPeriodEnd: now + 365 * 24 * 60 * 60 * 1000,
+              cancelAtPeriodEnd: false,
+              createdAt: now,
+              updatedAt: now,
+              expiresAt: now + 365 * 24 * 60 * 60 * 1000,
+              retentionUntil: calculateRetentionUntil(RETENTION_POLICIES.CHECKOUT_SESSIONS_DAYS),
+              schemaVersion: SCHEMA_VERSION
+            };
 
-          t.set(subRef, defaultSub);
-          return defaultSub;
-        }
+            t.set(subRef, defaultSub);
+            return defaultSub;
+          }
 
-        const data = doc.data() as SubscriptionRecord;
+          const data = doc.data() as SubscriptionRecord;
 
-        if (data.plan === 'PRO' && data.currentPeriodEnd < now && data.status === 'active') {
-          const updated: SubscriptionRecord = {
-            ...data,
-            status: 'expired',
-            plan: 'FREE',
-            updatedAt: now,
-            schemaVersion: SCHEMA_VERSION
-          };
-          t.set(subRef, updated);
-          return updated;
-        }
+          if (data.plan === 'PRO' && data.currentPeriodEnd < now && data.status === 'active') {
+            const updated: SubscriptionRecord = {
+              ...data,
+              status: 'expired',
+              plan: 'FREE',
+              updatedAt: now,
+              schemaVersion: SCHEMA_VERSION
+            };
+            t.set(subRef, updated);
+            return updated;
+          }
 
-        return data;
-      });
-    } catch (err: any) {
-      if (err.code === 7 || err.message?.includes('PERMISSION_DENIED') || err.message?.includes('credentials')) {
+          return data;
+        });
+      } catch (err: any) {
         firestoreDisabled = true;
-      } else {
+        if (isProd) {
+          throw new BillingUnavailableError(
+            'BILLING_UNAVAILABLE',
+            `Falha na transação do Firestore para assinaturas em produção: ${err.message}`,
+            err
+          );
+        }
         console.warn(`[BillingServer] Firestore subscription error for '${userId}':`, err.message);
       }
     }
   }
 
-  // 2. Transactional Durable Local Store
+  // 2. Production Fail-Closed Guard: NEVER use local store in production
+  if (isProd) {
+    throw new BillingUnavailableError(
+      'BILLING_UNAVAILABLE',
+      'Serviço de assinaturas indisponível em produção (armazenamento local proibido).'
+    );
+  }
+
+  // 3. Transactional Durable Local Store (Development / Test ONLY)
   const unlock = await storeLock.acquire();
   try {
     const store = initLocalStore();
@@ -337,69 +432,94 @@ export async function getUsage(userId: string): Promise<UsageRecord> {
   const now = Date.now();
   const oneDayMs = 24 * 60 * 60 * 1000;
   const thirtyDaysMs = 30 * oneDayMs;
+  const isProd = isProductionEnvironment();
 
   // 1. Try Firestore Transaction
   if (!firestoreDisabled) {
-    try {
-      const db = getFirebaseAdminFirestore();
-      const usageRef = db.collection('usage').doc(userId);
+    const db = getFirebaseAdminFirestore();
+    if (!db) {
+      firestoreDisabled = true;
+      if (isProd) {
+        throw new BillingUnavailableError(
+          'FIRESTORE_CONFIG_MISSING',
+          'Firestore Admin não configurado no servidor em ambiente de produção (fail-closed).'
+        );
+      }
+    } else {
+      try {
+        const usageRef = db.collection('usage').doc(userId);
 
-      return await db.runTransaction(async (t) => {
-        const doc = await t.get(usageRef);
+        return await db.runTransaction(async (t) => {
+          const doc = await t.get(usageRef);
 
-        if (!doc.exists) {
-          const defaultUsage: UsageRecord = {
-            userId,
-            diagnosesCount: 0,
-            aiGenerationsCount: 0,
-            dailyGenerationsCount: 0,
-            imageGenerationsCount: 0,
-            videoGenerationsCount: 0,
-            lastResetTimestamp: now,
-            lastDailyResetTimestamp: now,
-            createdAt: now,
-            updatedAt: now,
-            schemaVersion: SCHEMA_VERSION
-          };
+          if (!doc.exists) {
+            const defaultUsage: UsageRecord = {
+              userId,
+              diagnosesCount: 0,
+              aiGenerationsCount: 0,
+              dailyGenerationsCount: 0,
+              imageGenerationsCount: 0,
+              videoGenerationsCount: 0,
+              lastResetTimestamp: now,
+              lastDailyResetTimestamp: now,
+              createdAt: now,
+              updatedAt: now,
+              retentionUntil: calculateRetentionUntil(RETENTION_POLICIES.DIAGNOSIS_DAYS),
+              schemaVersion: SCHEMA_VERSION
+            };
 
-          t.set(usageRef, defaultUsage);
-          return defaultUsage;
-        }
+            t.set(usageRef, defaultUsage);
+            return defaultUsage;
+          }
 
-        const data = doc.data() as UsageRecord;
-        let modified = false;
+          const data = doc.data() as UsageRecord;
+          let modified = false;
 
-        if (now - data.lastDailyResetTimestamp > oneDayMs) {
-          data.dailyGenerationsCount = 0;
-          data.lastDailyResetTimestamp = now;
-          modified = true;
-        }
+          if (now - data.lastDailyResetTimestamp > oneDayMs) {
+            data.dailyGenerationsCount = 0;
+            data.lastDailyResetTimestamp = now;
+            modified = true;
+          }
 
-        if (now - data.lastResetTimestamp > thirtyDaysMs) {
-          data.diagnosesCount = 0;
-          data.aiGenerationsCount = 0;
-          data.imageGenerationsCount = 0;
-          data.videoGenerationsCount = 0;
-          data.lastResetTimestamp = now;
-          modified = true;
-        }
+          if (now - data.lastResetTimestamp > thirtyDaysMs) {
+            data.diagnosesCount = 0;
+            data.aiGenerationsCount = 0;
+            data.imageGenerationsCount = 0;
+            data.videoGenerationsCount = 0;
+            data.lastResetTimestamp = now;
+            modified = true;
+          }
 
-        if (modified) {
-          data.updatedAt = now;
-          data.schemaVersion = SCHEMA_VERSION;
-          t.set(usageRef, data);
-        }
+          if (modified) {
+            data.updatedAt = now;
+            data.schemaVersion = SCHEMA_VERSION;
+            t.set(usageRef, data);
+          }
 
-        return data;
-      });
-    } catch (err: any) {
-      if (err.code === 7 || err.message?.includes('PERMISSION_DENIED') || err.message?.includes('credentials')) {
+          return data;
+        });
+      } catch (err: any) {
         firestoreDisabled = true;
+        if (isProd) {
+          throw new BillingUnavailableError(
+            'BILLING_UNAVAILABLE',
+            `Falha na transação do Firestore para usage em produção: ${err.message}`,
+            err
+          );
+        }
       }
     }
   }
 
-  // 2. Transactional Durable Local Store
+  // 2. Production Fail-Closed Guard
+  if (isProd) {
+    throw new BillingUnavailableError(
+      'BILLING_UNAVAILABLE',
+      'Serviço de quotas indisponível em produção (armazenamento local proibido).'
+    );
+  }
+
+  // 3. Transactional Durable Local Store (Development / Test ONLY)
   const unlock = await storeLock.acquire();
   try {
     const store = initLocalStore();
@@ -477,7 +597,10 @@ export async function checkUserEntitlement(userId: string, entitlement: Entitlem
       allowed: true,
       plan: sub.plan
     };
-  } catch (err) {
+  } catch (err: any) {
+    if (err instanceof BillingUnavailableError) {
+      throw err;
+    }
     console.error(`[BillingServer] checkUserEntitlement failed for '${userId}':`, err);
     return {
       allowed: false,
@@ -506,209 +629,246 @@ export async function checkAndIncrementQuota(
   const now = Date.now();
   const oneDayMs = 24 * 60 * 60 * 1000;
   const thirtyDaysMs = 30 * oneDayMs;
+  const isProd = isProductionEnvironment();
 
   // 1. Try Firestore Transaction
   if (!firestoreDisabled) {
-    try {
-      const db = getFirebaseAdminFirestore();
-      const subRef = db.collection('subscriptions').doc(userId);
-      const usageRef = db.collection('usage').doc(userId);
+    const db = getFirebaseAdminFirestore();
+    if (!db) {
+      firestoreDisabled = true;
+      if (isProd) {
+        return {
+          allowed: false,
+          plan: 'FREE',
+          currentCount: 0,
+          maxLimit: 0,
+          errorCode: 'FIRESTORE_CONFIG_MISSING',
+          message: 'Serviço de cotas indisponível: Firestore Admin não configurado em produção (fail-closed).'
+        };
+      }
+    } else {
+      try {
+        const subRef = db.collection('subscriptions').doc(userId);
+        const usageRef = db.collection('usage').doc(userId);
 
-      return await db.runTransaction(async (t) => {
-        const subDoc = await t.get(subRef);
-        let sub: SubscriptionRecord;
-        if (!subDoc.exists) {
-          sub = {
-            userId,
-            plan: 'FREE',
-            status: 'active',
-            cycle: 'monthly',
-            provider: 'mercadopago',
-            subscriptionId: `sub_free_${userId}`,
-            currentPeriodStart: now,
-            currentPeriodEnd: now + 365 * 24 * 60 * 60 * 1000,
-            cancelAtPeriodEnd: false,
-            createdAt: now,
-            updatedAt: now,
-            expiresAt: now + 365 * 24 * 60 * 60 * 1000,
-            schemaVersion: SCHEMA_VERSION
-          };
-          t.set(subRef, sub);
-        } else {
-          sub = subDoc.data() as SubscriptionRecord;
-          if (sub.plan === 'PRO' && sub.currentPeriodEnd < now && sub.status === 'active') {
-            sub.status = 'expired';
-            sub.plan = 'FREE';
-            sub.updatedAt = now;
-            sub.schemaVersion = SCHEMA_VERSION;
+        return await db.runTransaction(async (t) => {
+          const subDoc = await t.get(subRef);
+          let sub: SubscriptionRecord;
+          if (!subDoc.exists) {
+            sub = {
+              userId,
+              plan: 'FREE',
+              status: 'active',
+              cycle: 'monthly',
+              provider: 'mercadopago',
+              subscriptionId: `sub_free_${userId}`,
+              currentPeriodStart: now,
+              currentPeriodEnd: now + 365 * 24 * 60 * 60 * 1000,
+              cancelAtPeriodEnd: false,
+              createdAt: now,
+              updatedAt: now,
+              expiresAt: now + 365 * 24 * 60 * 60 * 1000,
+              retentionUntil: calculateRetentionUntil(RETENTION_POLICIES.CHECKOUT_SESSIONS_DAYS),
+              schemaVersion: SCHEMA_VERSION
+            };
             t.set(subRef, sub);
+          } else {
+            sub = subDoc.data() as SubscriptionRecord;
+            if (sub.plan === 'PRO' && sub.currentPeriodEnd < now && sub.status === 'active') {
+              sub.status = 'expired';
+              sub.plan = 'FREE';
+              sub.updatedAt = now;
+              sub.schemaVersion = SCHEMA_VERSION;
+              t.set(subRef, sub);
+            }
           }
-        }
 
-        const usageDoc = await t.get(usageRef);
-        let usage: UsageRecord;
-        if (!usageDoc.exists) {
-          usage = {
-            userId,
-            diagnosesCount: 0,
-            aiGenerationsCount: 0,
-            dailyGenerationsCount: 0,
-            imageGenerationsCount: 0,
-            videoGenerationsCount: 0,
-            lastResetTimestamp: now,
-            lastDailyResetTimestamp: now,
-            createdAt: now,
-            updatedAt: now,
-            schemaVersion: SCHEMA_VERSION
-          };
-        } else {
-          usage = { ...(usageDoc.data() as UsageRecord) };
-        }
+          const usageDoc = await t.get(usageRef);
+          let usage: UsageRecord;
+          if (!usageDoc.exists) {
+            usage = {
+              userId,
+              diagnosesCount: 0,
+              aiGenerationsCount: 0,
+              dailyGenerationsCount: 0,
+              imageGenerationsCount: 0,
+              videoGenerationsCount: 0,
+              lastResetTimestamp: now,
+              lastDailyResetTimestamp: now,
+              createdAt: now,
+              updatedAt: now,
+              retentionUntil: calculateRetentionUntil(RETENTION_POLICIES.DIAGNOSIS_DAYS),
+              schemaVersion: SCHEMA_VERSION
+            };
+          } else {
+            usage = { ...(usageDoc.data() as UsageRecord) };
+          }
 
-        if (now - usage.lastDailyResetTimestamp > oneDayMs) {
-          usage.dailyGenerationsCount = 0;
-          usage.lastDailyResetTimestamp = now;
-        }
+          if (now - usage.lastDailyResetTimestamp > oneDayMs) {
+            usage.dailyGenerationsCount = 0;
+            usage.lastDailyResetTimestamp = now;
+          }
 
-        if (now - usage.lastResetTimestamp > thirtyDaysMs) {
-          usage.diagnosesCount = 0;
-          usage.aiGenerationsCount = 0;
-          usage.imageGenerationsCount = 0;
-          usage.videoGenerationsCount = 0;
-          usage.lastResetTimestamp = now;
-        }
+          if (now - usage.lastResetTimestamp > thirtyDaysMs) {
+            usage.diagnosesCount = 0;
+            usage.aiGenerationsCount = 0;
+            usage.imageGenerationsCount = 0;
+            usage.videoGenerationsCount = 0;
+            usage.lastResetTimestamp = now;
+          }
 
-        const config = getPlanConfig(sub.plan);
+          const config = getPlanConfig(sub.plan);
 
-        if (actionType === 'DIAGNOSIS') {
-          const maxLimit = sub.plan === 'FREE' ? config.quotas.maxDiagnosesTotal : config.quotas.maxDiagnosesPerMonth;
-          if (usage.diagnosesCount >= maxLimit) {
+          if (actionType === 'DIAGNOSIS') {
+            const maxLimit = sub.plan === 'FREE' ? config.quotas.maxDiagnosesTotal : config.quotas.maxDiagnosesPerMonth;
+            if (usage.diagnosesCount >= maxLimit) {
+              return {
+                allowed: false,
+                plan: sub.plan,
+                currentCount: usage.diagnosesCount,
+                maxLimit,
+                errorCode: sub.plan === 'FREE' ? 'FREE_QUOTA_EXCEEDED' : 'PRO_MONTHLY_QUOTA_EXCEEDED',
+                message: sub.plan === 'FREE'
+                  ? 'Você atingiu o limite de 1 diagnóstico gratuito no plano Free. Faça upgrade para o InstaScore PRO para realizar análises adicionais.'
+                  : `Você atingiu seu limite de ${maxLimit} diagnósticos mensais do plano Pro.`
+              };
+            }
+
+            usage.diagnosesCount += 1;
+            usage.updatedAt = now;
+            usage.schemaVersion = SCHEMA_VERSION;
+            t.set(usageRef, usage);
+
             return {
-              allowed: false,
+              allowed: true,
               plan: sub.plan,
               currentCount: usage.diagnosesCount,
-              maxLimit,
-              errorCode: sub.plan === 'FREE' ? 'FREE_QUOTA_EXCEEDED' : 'PRO_MONTHLY_QUOTA_EXCEEDED',
-              message: sub.plan === 'FREE'
-                ? 'Você atingiu o limite de 1 diagnóstico gratuito no plano Free. Faça upgrade para o InstaScore PRO para realizar análises adicionais.'
-                : `Você atingiu seu limite de ${maxLimit} diagnósticos mensais do plano Pro.`
+              maxLimit
             };
-          }
+          } else if (actionType === 'IMAGE_GENERATION') {
+            const limit = config.quotas.maxImageGenerationsPerMonth;
+            if (limit <= 0) {
+              return {
+                allowed: false,
+                plan: sub.plan,
+                currentCount: usage.imageGenerationsCount,
+                maxLimit: limit,
+                errorCode: 'IMAGE_GENERATION_PRO_ONLY',
+                message: 'A geração de imagens visuais estratégicas é exclusiva do plano InstaScore PRO.'
+              };
+            }
+            if (usage.imageGenerationsCount >= limit) {
+              return {
+                allowed: false,
+                plan: sub.plan,
+                currentCount: usage.imageGenerationsCount,
+                maxLimit: limit,
+                errorCode: 'IMAGE_MONTHLY_QUOTA_EXCEEDED',
+                message: `Você atingiu o limite mensal de ${limit} gerações de imagens do seu plano PRO.`
+              };
+            }
 
-          usage.diagnosesCount += 1;
-          usage.updatedAt = now;
-          usage.schemaVersion = SCHEMA_VERSION;
-          t.set(usageRef, usage);
+            usage.imageGenerationsCount += 1;
+            usage.updatedAt = now;
+            usage.schemaVersion = SCHEMA_VERSION;
+            t.set(usageRef, usage);
 
-          return {
-            allowed: true,
-            plan: sub.plan,
-            currentCount: usage.diagnosesCount,
-            maxLimit
-          };
-        } else if (actionType === 'IMAGE_GENERATION') {
-          const limit = config.quotas.maxImageGenerationsPerMonth;
-          if (limit <= 0) {
             return {
-              allowed: false,
+              allowed: true,
               plan: sub.plan,
               currentCount: usage.imageGenerationsCount,
-              maxLimit: limit,
-              errorCode: 'IMAGE_GENERATION_PRO_ONLY',
-              message: 'A geração de imagens visuais estratégicas é exclusiva do plano InstaScore PRO.'
+              maxLimit: limit
             };
-          }
-          if (usage.imageGenerationsCount >= limit) {
-            return {
-              allowed: false,
-              plan: sub.plan,
-              currentCount: usage.imageGenerationsCount,
-              maxLimit: limit,
-              errorCode: 'IMAGE_MONTHLY_QUOTA_EXCEEDED',
-              message: `Você atingiu o limite mensal de ${limit} gerações de imagens do seu plano PRO.`
-            };
-          }
+          } else if (actionType === 'VIDEO_GENERATION') {
+            const limit = config.quotas.maxVideoGenerationsPerMonth;
+            if (limit <= 0) {
+              return {
+                allowed: false,
+                plan: sub.plan,
+                currentCount: usage.videoGenerationsCount,
+                maxLimit: limit,
+                errorCode: 'VIDEO_GENERATION_PRO_ONLY',
+                message: 'A geração de roteiros de vídeo é exclusiva do plano InstaScore PRO.'
+              };
+            }
+            if (usage.videoGenerationsCount >= limit) {
+              return {
+                allowed: false,
+                plan: sub.plan,
+                currentCount: usage.videoGenerationsCount,
+                maxLimit: limit,
+                errorCode: 'VIDEO_MONTHLY_QUOTA_EXCEEDED',
+                message: `Você atingiu o limite mensal de ${limit} storyboards de vídeo do seu plano PRO.`
+              };
+            }
 
-          usage.imageGenerationsCount += 1;
-          usage.updatedAt = now;
-          usage.schemaVersion = SCHEMA_VERSION;
-          t.set(usageRef, usage);
+            usage.videoGenerationsCount += 1;
+            usage.updatedAt = now;
+            usage.schemaVersion = SCHEMA_VERSION;
+            t.set(usageRef, usage);
 
-          return {
-            allowed: true,
-            plan: sub.plan,
-            currentCount: usage.imageGenerationsCount,
-            maxLimit: limit
-          };
-        } else if (actionType === 'VIDEO_GENERATION') {
-          const limit = config.quotas.maxVideoGenerationsPerMonth;
-          if (limit <= 0) {
             return {
-              allowed: false,
-              plan: sub.plan,
-              currentCount: usage.videoGenerationsCount,
-              maxLimit: limit,
-              errorCode: 'VIDEO_GENERATION_PRO_ONLY',
-              message: 'A geração de roteiros de vídeo é exclusiva do plano InstaScore PRO.'
-            };
-          }
-          if (usage.videoGenerationsCount >= limit) {
-            return {
-              allowed: false,
+              allowed: true,
               plan: sub.plan,
               currentCount: usage.videoGenerationsCount,
-              maxLimit: limit,
-              errorCode: 'VIDEO_MONTHLY_QUOTA_EXCEEDED',
-              message: `Você atingiu o limite mensal de ${limit} storyboards de vídeo do seu plano PRO.`
+              maxLimit: limit
             };
-          }
+          } else {
+            const dailyLimit = config.quotas.maxAiGenerationsPerDay;
+            if (usage.dailyGenerationsCount >= dailyLimit) {
+              return {
+                allowed: false,
+                plan: sub.plan,
+                currentCount: usage.dailyGenerationsCount,
+                maxLimit: dailyLimit,
+                errorCode: 'DAILY_AI_QUOTA_EXCEEDED',
+                message: `Você atingiu o limite diário de ${dailyLimit} gerações de IA.`
+              };
+            }
 
-          usage.videoGenerationsCount += 1;
-          usage.updatedAt = now;
-          usage.schemaVersion = SCHEMA_VERSION;
-          t.set(usageRef, usage);
+            usage.dailyGenerationsCount += 1;
+            usage.aiGenerationsCount += 1;
+            usage.updatedAt = now;
+            usage.schemaVersion = SCHEMA_VERSION;
+            t.set(usageRef, usage);
 
-          return {
-            allowed: true,
-            plan: sub.plan,
-            currentCount: usage.videoGenerationsCount,
-            maxLimit: limit
-          };
-        } else {
-          const dailyLimit = config.quotas.maxAiGenerationsPerDay;
-          if (usage.dailyGenerationsCount >= dailyLimit) {
             return {
-              allowed: false,
+              allowed: true,
               plan: sub.plan,
               currentCount: usage.dailyGenerationsCount,
-              maxLimit: dailyLimit,
-              errorCode: 'DAILY_AI_QUOTA_EXCEEDED',
-              message: `Você atingiu o limite diário de ${dailyLimit} gerações de IA.`
+              maxLimit: dailyLimit
             };
           }
-
-          usage.dailyGenerationsCount += 1;
-          usage.aiGenerationsCount += 1;
-          usage.updatedAt = now;
-          usage.schemaVersion = SCHEMA_VERSION;
-          t.set(usageRef, usage);
-
+        });
+      } catch (err: any) {
+        firestoreDisabled = true;
+        if (isProd) {
           return {
-            allowed: true,
-            plan: sub.plan,
-            currentCount: usage.dailyGenerationsCount,
-            maxLimit: dailyLimit
+            allowed: false,
+            plan: 'FREE',
+            currentCount: 0,
+            maxLimit: 0,
+            errorCode: 'BILLING_UNAVAILABLE',
+            message: `Serviço de cotas indisponível em produção (fail-closed): ${err.message}`
           };
         }
-      });
-    } catch (err: any) {
-      if (err.code === 7 || err.message?.includes('PERMISSION_DENIED') || err.message?.includes('credentials')) {
-        firestoreDisabled = true;
       }
     }
   }
 
-  // 2. Transactional Durable Local Store with Strict Mutex
+  // 2. Production Fail-Closed Guard
+  if (isProd) {
+    return {
+      allowed: false,
+      plan: 'FREE',
+      currentCount: 0,
+      maxLimit: 0,
+      errorCode: 'BILLING_UNAVAILABLE',
+      message: 'Serviço de validação de cotas indisponível em produção (armazenamento local proibido).'
+    };
+  }
+
+  // 3. Transactional Durable Local Store with Strict Mutex (Development / Test ONLY)
   const unlock = await storeLock.acquire();
   try {
     const store = initLocalStore();
@@ -910,41 +1070,55 @@ export async function refundQuota(
 ): Promise<boolean> {
   if (!userId) userId = 'anonymous';
   const now = Date.now();
+  const isProd = isProductionEnvironment();
 
   // 1. Try Firestore Transaction
   if (!firestoreDisabled) {
-    try {
-      const db = getFirebaseAdminFirestore();
-      const usageRef = db.collection('usage').doc(userId);
+    const db = getFirebaseAdminFirestore();
+    if (!db) {
+      firestoreDisabled = true;
+      if (isProd) {
+        return false;
+      }
+    } else {
+      try {
+        const usageRef = db.collection('usage').doc(userId);
 
-      await db.runTransaction(async (t) => {
-        const doc = await t.get(usageRef);
-        if (!doc.exists) return;
-        const usage = doc.data() as UsageRecord;
+        await db.runTransaction(async (t) => {
+          const doc = await t.get(usageRef);
+          if (!doc.exists) return;
+          const usage = doc.data() as UsageRecord;
 
-        if (actionType === 'DIAGNOSIS') {
-          if (usage.diagnosesCount > 0) usage.diagnosesCount -= 1;
-        } else if (actionType === 'IMAGE_GENERATION') {
-          if (usage.imageGenerationsCount > 0) usage.imageGenerationsCount -= 1;
-        } else if (actionType === 'VIDEO_GENERATION') {
-          if (usage.videoGenerationsCount > 0) usage.videoGenerationsCount -= 1;
-        } else {
-          if (usage.dailyGenerationsCount > 0) usage.dailyGenerationsCount -= 1;
-          if (usage.aiGenerationsCount > 0) usage.aiGenerationsCount -= 1;
-        }
+          if (actionType === 'DIAGNOSIS') {
+            if (usage.diagnosesCount > 0) usage.diagnosesCount -= 1;
+          } else if (actionType === 'IMAGE_GENERATION') {
+            if (usage.imageGenerationsCount > 0) usage.imageGenerationsCount -= 1;
+          } else if (actionType === 'VIDEO_GENERATION') {
+            if (usage.videoGenerationsCount > 0) usage.videoGenerationsCount -= 1;
+          } else {
+            if (usage.dailyGenerationsCount > 0) usage.dailyGenerationsCount -= 1;
+            if (usage.aiGenerationsCount > 0) usage.aiGenerationsCount -= 1;
+          }
 
-        usage.updatedAt = now;
-        t.set(usageRef, usage);
-      });
-      return true;
-    } catch (err: any) {
-      if (err.code === 7 || err.message?.includes('PERMISSION_DENIED') || err.message?.includes('credentials')) {
+          usage.updatedAt = now;
+          t.set(usageRef, usage);
+        });
+        return true;
+      } catch (err: any) {
         firestoreDisabled = true;
+        if (isProd) {
+          return false;
+        }
       }
     }
   }
 
-  // 2. Transactional Local Fallback Store
+  // 2. Production Guard: Do not modify local store in production
+  if (isProd) {
+    return false;
+  }
+
+  // 3. Transactional Local Fallback Store (Development / Test ONLY)
   const unlock = await storeLock.acquire();
   try {
     const store = initLocalStore();
@@ -986,6 +1160,9 @@ export async function checkDistributedRateLimit(
   if (!firestoreDisabled) {
     try {
       const db = getFirebaseAdminFirestore();
+      if (!db) {
+        throw new Error('FIRESTORE_NOT_AVAILABLE');
+      }
       const rateLimitRef = db.collection('rate_limits').doc(safeKey);
 
       return await db.runTransaction(async (t) => {
@@ -1023,7 +1200,15 @@ export async function checkDistributedRateLimit(
         return { allowed: true, remaining: maxRequests - record.count, resetAt: record.resetAt };
       });
     } catch (err: any) {
-      if (err.code === 7 || err.message?.includes('PERMISSION_DENIED') || err.message?.includes('credentials')) {
+      if (
+        err.message === 'FIRESTORE_NOT_AVAILABLE' ||
+        err.code === 7 ||
+        err.code === 16 ||
+        err.message?.includes('PERMISSION_DENIED') ||
+        err.message?.includes('credentials') ||
+        err.message?.includes('Could not load the default credentials') ||
+        err.message?.includes('Cannot read properties of null')
+      ) {
         firestoreDisabled = true;
       }
     }
@@ -1059,6 +1244,105 @@ export async function checkDistributedRateLimit(
   }
 }
 
+export const STAGING_APP_URL = 'https://ais-pre-kjyykzi73x3httzdxpoy6q-162439389760.us-east1.run.app';
+
+export interface WebhookUrlValidationResult {
+  valid: boolean;
+  notificationUrl?: string;
+  baseUrl?: string;
+  error?: string;
+  errorCode?: string;
+}
+
+/**
+ * Validates and constructs an absolute HTTPS notification_url for payment gateways.
+ * Prevents invalid localhost, null, undefined, or missing protocol values.
+ */
+export function validateAndBuildWebhookNotificationUrl(customCandidateBaseUrl?: string): WebhookUrlValidationResult {
+  let rawCandidate = customCandidateBaseUrl !== undefined 
+    ? customCandidateBaseUrl 
+    : (process.env.APP_URL || process.env.PUBLIC_URL || '');
+
+  rawCandidate = (rawCandidate || '').trim();
+
+  // If candidate is empty or is a local placeholder, use known staging domain if in staging/dev
+  if (!rawCandidate || rawCandidate === 'MY_APP_URL' || rawCandidate.includes('localhost') || rawCandidate.includes('127.0.0.1')) {
+    if (customCandidateBaseUrl === undefined) {
+      if (process.env.PAYMENT_ENVIRONMENT === 'production' && process.env.APP_URL && !process.env.APP_URL.includes('localhost') && process.env.APP_URL !== 'MY_APP_URL') {
+        rawCandidate = process.env.APP_URL.trim();
+      } else {
+        // Automatic fallback for staging / development
+        rawCandidate = STAGING_APP_URL;
+      }
+    }
+  }
+
+  if (!rawCandidate) {
+    return {
+      valid: false,
+      error: 'APP_URL_MISSING: Variável de ambiente APP_URL não configurada no servidor.',
+      errorCode: 'APP_URL_MISSING'
+    };
+  }
+
+  // Check forbidden tokens
+  if (
+    rawCandidate.includes('undefined') ||
+    rawCandidate.includes('null') ||
+    rawCandidate.includes('localhost') ||
+    rawCandidate.includes('127.0.0.1') ||
+    /\s/.test(rawCandidate)
+  ) {
+    return {
+      valid: false,
+      error: `INVALID_APP_URL: URL base contém valores proibidos (localhost, espaços, null ou undefined): '${rawCandidate}'`,
+      errorCode: 'INVALID_APP_URL'
+    };
+  }
+
+  let parsedUrl: URL;
+  try {
+    // If rawCandidate has no protocol (e.g. "my-domain.com"), new URL will throw TypeError
+    parsedUrl = new URL('/api/webhook/payment', rawCandidate);
+  } catch (err: any) {
+    return {
+      valid: false,
+      error: `INVALID_APP_URL_FORMAT: Não foi possível analisar a URL a partir de '${rawCandidate}': ${err.message}`,
+      errorCode: 'INVALID_APP_URL_FORMAT'
+    };
+  }
+
+  // 1. Must be https:
+  if (parsedUrl.protocol !== 'https:') {
+    return {
+      valid: false,
+      error: `INVALID_PROTOCOL: O gateway de pagamentos exige protocolo HTTPS para notification_url. Protocolo recebido: '${parsedUrl.protocol}'`,
+      errorCode: 'INVALID_PROTOCOL'
+    };
+  }
+
+  // 2. Hostname must be valid and contain at least one dot
+  if (!parsedUrl.hostname || !parsedUrl.hostname.includes('.') || parsedUrl.hostname.startsWith('.') || parsedUrl.hostname.endsWith('.')) {
+    return {
+      valid: false,
+      error: `INVALID_HOSTNAME: Hostname inválido '${parsedUrl.hostname}' para notification_url pública.`,
+      errorCode: 'INVALID_HOSTNAME'
+    };
+  }
+
+  // Clean pathname to remove any duplicate slashes
+  parsedUrl.pathname = parsedUrl.pathname.replace(/\/+/g, '/');
+
+  const notificationUrl = parsedUrl.toString();
+  const baseUrl = `${parsedUrl.protocol}//${parsedUrl.host}`;
+
+  return {
+    valid: true,
+    notificationUrl,
+    baseUrl
+  };
+}
+
 /**
  * Creates a REAL Payment Checkout Session with fail-closed production controls.
  */
@@ -1072,7 +1356,7 @@ export async function createCheckoutSessionServer(params: {
 }): Promise<CheckoutSessionRecord> {
   const { userId, planId, cycle, paymentMethod, userEmail, appUrl } = params;
 
-  const isLiveProduction = process.env.PAYMENT_ENVIRONMENT === 'production';
+  const isLiveProduction = process.env.PAYMENT_ENVIRONMENT === 'production' || process.env.NODE_ENV === 'production';
   const isSandbox = process.env.PAYMENT_ENVIRONMENT === 'sandbox' || !process.env.PAYMENT_ENVIRONMENT;
   const mpAccessToken = process.env.MERCADOPAGO_ACCESS_TOKEN;
 
@@ -1084,12 +1368,25 @@ export async function createCheckoutSessionServer(params: {
     throw configErr;
   }
 
+  // Validate and construct notification_url and clean baseUrl
+  const webhookUrlValidation = validateAndBuildWebhookNotificationUrl(appUrl);
+  if (!webhookUrlValidation.valid || !webhookUrlValidation.notificationUrl || !webhookUrlValidation.baseUrl) {
+    const configErr: any = new Error(
+      `GATEWAY_CONFIGURATION_ERROR: ${webhookUrlValidation.error || 'notification_url inválida para o gateway de pagamentos.'}`
+    );
+    configErr.status = 503;
+    configErr.code = webhookUrlValidation.errorCode || 'GATEWAY_CONFIG_MISSING';
+    throw configErr;
+  }
+
+  const notificationUrl = webhookUrlValidation.notificationUrl;
+  const baseUrl = webhookUrlValidation.baseUrl;
+
   const selectedPlanConfig = getPlanConfig(planId);
   const amount = cycle === 'annual' ? selectedPlanConfig.priceAnnual : selectedPlanConfig.priceMonthly;
   const sessionId = `chk_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
   const now = Date.now();
   const expiresAt = now + 30 * 60 * 1000;
-  const baseUrl = appUrl || process.env.APP_URL || 'http://localhost:3000';
 
   let checkoutRecord: CheckoutSessionRecord = {
     sessionId,
@@ -1126,7 +1423,7 @@ export async function createCheckoutSessionServer(params: {
               first_name: 'InstaScore',
               last_name: 'User'
             },
-            notification_url: `${baseUrl}/api/webhook/payment`,
+            notification_url: notificationUrl,
             external_reference: sessionId,
             metadata: {
               user_id: userId,
@@ -1181,7 +1478,7 @@ export async function createCheckoutSessionServer(params: {
               pending: `${baseUrl}/my-plan?checkout=pending`
             },
             auto_return: 'approved',
-            notification_url: `${baseUrl}/api/webhook/payment`,
+            notification_url: notificationUrl,
             metadata: {
               user_id: userId,
               session_id: sessionId,
@@ -1247,19 +1544,34 @@ export async function createCheckoutSessionServer(params: {
   if (!firestoreDisabled) {
     try {
       const db = getFirebaseAdminFirestore();
-      await db.collection('checkout_sessions').doc(sessionId).set(checkoutRecord);
-    } catch {
+      if (db) {
+        await db.collection('checkout_sessions').doc(sessionId).set(checkoutRecord);
+      } else {
+        firestoreDisabled = true;
+        if (isLiveProduction) {
+          throw new BillingUnavailableError('FIRESTORE_CONFIG_MISSING', 'Firestore Admin não configurado para salvar sessão de checkout em produção.');
+        }
+      }
+    } catch (err: any) {
       firestoreDisabled = true;
+      if (isLiveProduction) {
+        throw new BillingUnavailableError('BILLING_UNAVAILABLE', `Falha ao persistir sessão de checkout no Firestore em produção: ${err.message}`, err);
+      }
     }
+  } else if (isLiveProduction) {
+    throw new BillingUnavailableError('BILLING_UNAVAILABLE', 'Serviço de checkout indisponível em produção (armazenamento local proibido).');
   }
 
-  const unlock = await storeLock.acquire();
-  try {
-    const store = initLocalStore();
-    store.checkout_sessions[sessionId] = checkoutRecord;
-    saveLocalStore(store);
-  } finally {
-    unlock();
+  // Only in dev / testing mode allow local store fallback
+  if (!isLiveProduction) {
+    const unlock = await storeLock.acquire();
+    try {
+      const store = initLocalStore();
+      store.checkout_sessions[sessionId] = checkoutRecord;
+      saveLocalStore(store);
+    } finally {
+      unlock();
+    }
   }
 
   return checkoutRecord;
@@ -1544,9 +1856,11 @@ export async function verifyMercadoPagoPaymentS2S(params: {
     if (!firestoreDisabled) {
       try {
         const db = getFirebaseAdminFirestore();
-        const doc = await db.collection('checkout_sessions').doc(metaSessionId).get();
-        if (doc.exists) {
-          sessionRecord = doc.data() as CheckoutSessionRecord;
+        if (db) {
+          const doc = await db.collection('checkout_sessions').doc(metaSessionId).get();
+          if (doc.exists) {
+            sessionRecord = doc.data() as CheckoutSessionRecord;
+          }
         }
       } catch {
         firestoreDisabled = true;
@@ -1699,66 +2013,100 @@ export async function processWebhookEvent(event: {
   const now = Date.now();
   const sanitizedPayload = sanitizePaymentPayload(payload);
 
+  const isProd = isProductionEnvironment();
+
   // 1. Transactional Idempotency Check by eventId AND providerPaymentId
   if (!firestoreDisabled) {
     try {
       const db = getFirebaseAdminFirestore();
-      const existingEvent = await db.collection('webhook_events').doc(eventId).get();
-      if (existingEvent.exists) {
-        const evtData = existingEvent.data() as WebhookEventRecord;
-        const sub = await getSubscription(evtData.userId);
-        return {
-          success: true,
-          processed: false,
-          httpStatus: 200,
-          reason: 'EVENTO_JA_PROCESSADO_IDEMPOTENCIA',
-          subscription: sub
-        };
-      }
-
-      if (paymentId) {
-        const existingPayment = await db.collection('payments_processed').doc(paymentId).get();
-        if (existingPayment.exists) {
-          const payData = existingPayment.data() as any;
-          const sub = await getSubscription(payData.userId);
+      if (db) {
+        const existingEvent = await db.collection('webhook_events').doc(eventId).get();
+        if (existingEvent.exists) {
+          const evtData = existingEvent.data() as WebhookEventRecord;
+          const sub = await getSubscription(evtData.userId);
           return {
             success: true,
             processed: false,
             httpStatus: 200,
-            reason: 'PAGAMENTO_JA_PROCESSADO_IDEMPOTENCIA',
+            reason: 'EVENTO_JA_PROCESSADO_IDEMPOTENCIA',
             subscription: sub
           };
         }
+
+        if (paymentId) {
+          const existingPayment = await db.collection('payments_processed').doc(paymentId).get();
+          if (existingPayment.exists) {
+            const payData = existingPayment.data() as any;
+            const sub = await getSubscription(payData.userId);
+            return {
+              success: true,
+              processed: false,
+              httpStatus: 200,
+              reason: 'PAGAMENTO_JA_PROCESSADO_IDEMPOTENCIA',
+              subscription: sub
+            };
+          }
+        }
+      } else {
+        firestoreDisabled = true;
+        if (isProd) {
+          return {
+            success: false,
+            processed: false,
+            httpStatus: 503,
+            reason: 'FIRESTORE_CONFIG_MISSING',
+            message: 'Firestore Admin não configurado para processar webhook em produção (fail-closed).'
+          };
+        }
       }
-    } catch {
+    } catch (err: any) {
       firestoreDisabled = true;
+      if (isProd) {
+        return {
+          success: false,
+          processed: false,
+          httpStatus: 503,
+          reason: 'BILLING_UNAVAILABLE',
+          message: `Falha na verificação de idempotência no Firestore: ${err.message}`
+        };
+      }
     }
-  }
-
-  // Local Store idempotency check
-  const store = initLocalStore();
-  if (store.webhook_events[eventId]) {
-    const existingEvt = store.webhook_events[eventId];
-    const sub = await getSubscription(existingEvt.userId);
+  } else if (isProd) {
     return {
-      success: true,
+      success: false,
       processed: false,
-      httpStatus: 200,
-      reason: 'EVENTO_JA_PROCESSADO_IDEMPOTENCIA',
-      subscription: sub
+      httpStatus: 503,
+      reason: 'BILLING_UNAVAILABLE',
+      message: 'Serviço de webhook indisponível em produção (armazenamento local proibido).'
     };
   }
 
-  if (paymentId && store.processed_payments && store.processed_payments[paymentId]) {
-    const existingPay = store.processed_payments[paymentId];
-    const sub = await getSubscription(existingPay.userId);
-    return {
-      success: true,
-      processed: false,
-      httpStatus: 200,
-      reason: 'PAGAMENTO_JA_PROCESSADO_IDEMPOTENCIA',
-      subscription: sub
-    };
+  // Local Store idempotency check (Development / Test ONLY)
+  if (!isProd) {
+    const store = initLocalStore();
+    if (store.webhook_events[eventId]) {
+      const existingEvt = store.webhook_events[eventId];
+      const sub = await getSubscription(existingEvt.userId);
+      return {
+        success: true,
+        processed: false,
+        httpStatus: 200,
+        reason: 'EVENTO_JA_PROCESSADO_IDEMPOTENCIA',
+        subscription: sub
+      };
+    }
+
+    if (paymentId && store.processed_payments && store.processed_payments[paymentId]) {
+      const existingPay = store.processed_payments[paymentId];
+      const sub = await getSubscription(existingPay.userId);
+      return {
+        success: true,
+        processed: false,
+        httpStatus: 200,
+        reason: 'PAGAMENTO_JA_PROCESSADO_IDEMPOTENCIA',
+        subscription: sub
+      };
+    }
   }
 
   // 2. Server-to-Server Verification (when paymentId or fixturePayment is present)
@@ -1797,9 +2145,11 @@ export async function processWebhookEvent(event: {
         if (!firestoreDisabled) {
           try {
             const db = getFirebaseAdminFirestore();
-            await db.collection('webhook_events').doc(eventId).set(webhookRecord);
-            if (sessionId) {
-              await db.collection('checkout_sessions').doc(sessionId).update({ status: rawStatus as any, updatedAt: now });
+            if (db) {
+              await db.collection('webhook_events').doc(eventId).set(webhookRecord);
+              if (sessionId) {
+                await db.collection('checkout_sessions').doc(sessionId).update({ status: rawStatus as any, updatedAt: now });
+              }
             }
           } catch {
             firestoreDisabled = true;
@@ -1867,6 +2217,9 @@ export async function processWebhookEvent(event: {
   if (!firestoreDisabled) {
     try {
       const db = getFirebaseAdminFirestore();
+      if (!db) {
+        throw new Error('FIRESTORE_NOT_AVAILABLE');
+      }
       const eventRef = db.collection('webhook_events').doc(eventId);
       const subRef = db.collection('subscriptions').doc(trustedUserId);
       const usageRef = db.collection('usage').doc(trustedUserId);
@@ -2010,7 +2363,15 @@ export async function processWebhookEvent(event: {
         };
       });
     } catch (err: any) {
-      if (err.code === 7 || err.message?.includes('PERMISSION_DENIED') || err.message?.includes('credentials')) {
+      if (
+        err.message === 'FIRESTORE_NOT_AVAILABLE' ||
+        err.code === 7 ||
+        err.code === 16 ||
+        err.message?.includes('PERMISSION_DENIED') ||
+        err.message?.includes('credentials') ||
+        err.message?.includes('Could not load the default credentials') ||
+        err.message?.includes('Cannot read properties of null')
+      ) {
         firestoreDisabled = true;
       }
     }
@@ -2142,8 +2503,27 @@ export async function getCheckoutSessionStatus(sessionId: string, userId: string
   isPro: boolean;
   session?: CheckoutSessionRecord;
 }> {
-  const store = initLocalStore();
-  const session = store.checkout_sessions[sessionId];
+  let session: CheckoutSessionRecord | null = null;
+  const isProd = isProductionEnvironment();
+
+  if (!firestoreDisabled) {
+    try {
+      const db = getFirebaseAdminFirestore();
+      if (db) {
+        const doc = await db.collection('checkout_sessions').doc(sessionId).get();
+        if (doc.exists) {
+          session = doc.data() as CheckoutSessionRecord;
+        }
+      }
+    } catch {
+      firestoreDisabled = true;
+    }
+  }
+
+  if (!session && !isProd) {
+    const store = initLocalStore();
+    session = store.checkout_sessions[sessionId] || null;
+  }
 
   if (!session) {
     return { found: false, status: 'not_found', isPro: false };
@@ -2174,6 +2554,7 @@ export async function cancelSubscriptionServer(userId: string): Promise<{ succes
     return { success: false, error: 'NO_ACTIVE_PRO_SUBSCRIPTION' };
   }
 
+  const isProd = isProductionEnvironment();
   const mpAccessToken = process.env.MERCADOPAGO_ACCESS_TOKEN;
   // If subscription is linked to Mercado Pago preapproval/subscription
   if (sub.provider === 'mercadopago' && sub.providerSubscriptionId && mpAccessToken) {
@@ -2198,38 +2579,61 @@ export async function cancelSubscriptionServer(userId: string): Promise<{ succes
   }
 
   const now = Date.now();
+  let firestoreUpdated = false;
+
   if (!firestoreDisabled) {
     try {
       const db = getFirebaseAdminFirestore();
-      const subRef = db.collection('subscriptions').doc(userId);
-      await subRef.update({
+      if (db) {
+        const subRef = db.collection('subscriptions').doc(userId);
+        await subRef.update({
+          cancelAtPeriodEnd: true,
+          status: 'canceled',
+          updatedAt: now,
+          schemaVersion: SCHEMA_VERSION
+        });
+        firestoreUpdated = true;
+      }
+    } catch (err: any) {
+      firestoreDisabled = true;
+      if (isProd) {
+        throw new BillingUnavailableError('BILLING_UNAVAILABLE', `Falha ao cancelar assinatura no Firestore em produção: ${err.message}`, err);
+      }
+    }
+  }
+
+  if (isProd && !firestoreUpdated) {
+    throw new BillingUnavailableError('BILLING_UNAVAILABLE', 'Cancelamento de assinatura indisponível em produção (armazenamento local proibido).');
+  }
+
+  let canceled: SubscriptionRecord = {
+    ...sub,
+    cancelAtPeriodEnd: true,
+    status: 'canceled',
+    updatedAt: now,
+    schemaVersion: SCHEMA_VERSION
+  };
+
+  if (!isProd) {
+    const unlock = await storeLock.acquire();
+    try {
+      const store = initLocalStore();
+      const existing = store.subscriptions[userId] || sub;
+      canceled = {
+        ...existing,
         cancelAtPeriodEnd: true,
         status: 'canceled',
         updatedAt: now,
         schemaVersion: SCHEMA_VERSION
-      });
-    } catch {
-      firestoreDisabled = true;
+      };
+      store.subscriptions[userId] = canceled;
+      saveLocalStore(store);
+    } finally {
+      unlock();
     }
   }
 
-  const unlock = await storeLock.acquire();
-  try {
-    const store = initLocalStore();
-    const existing = store.subscriptions[userId] || sub;
-    const canceled: SubscriptionRecord = {
-      ...existing,
-      cancelAtPeriodEnd: true,
-      status: 'canceled',
-      updatedAt: now,
-      schemaVersion: SCHEMA_VERSION
-    };
-    store.subscriptions[userId] = canceled;
-    saveLocalStore(store);
-    return { success: true, subscription: canceled };
-  } finally {
-    unlock();
-  }
+  return { success: true, subscription: canceled };
 }
 
 /**
@@ -2251,6 +2655,7 @@ export async function logAiExecutionCost(data: {
   const { costUsd, costBrl } = calculateEstimatedAiCost(data.modelUsed, inTokens, outTokens);
   const now = Date.now();
   const logId = `log_${now}_${crypto.randomBytes(3).toString('hex')}`;
+  const isProd = isProductionEnvironment();
 
   const logRecord: AiLogRecord = {
     id: logId,
@@ -2271,13 +2676,26 @@ export async function logAiExecutionCost(data: {
     schemaVersion: SCHEMA_VERSION
   };
 
-  const unlock = await storeLock.acquire();
-  try {
-    const store = initLocalStore();
-    store.ai_logs[logId] = logRecord;
-    saveLocalStore(store);
-  } finally {
-    unlock();
+  if (!firestoreDisabled) {
+    try {
+      const db = getFirebaseAdminFirestore();
+      if (db) {
+        await db.collection('ai_logs').doc(logId).set(logRecord);
+      }
+    } catch {
+      firestoreDisabled = true;
+    }
+  }
+
+  if (!isProd) {
+    const unlock = await storeLock.acquire();
+    try {
+      const store = initLocalStore();
+      store.ai_logs[logId] = logRecord;
+      saveLocalStore(store);
+    } finally {
+      unlock();
+    }
   }
 
   return logRecord;
@@ -2295,6 +2713,7 @@ export async function submitUserFeedback(data: {
 }): Promise<FeedbackRecord> {
   const now = Date.now();
   const feedbackId = `fb_${now}_${crypto.randomBytes(3).toString('hex')}`;
+  const isProd = isProductionEnvironment();
 
   const record: FeedbackRecord = {
     id: feedbackId,
@@ -2310,13 +2729,26 @@ export async function submitUserFeedback(data: {
     schemaVersion: SCHEMA_VERSION
   };
 
-  const unlock = await storeLock.acquire();
-  try {
-    const store = initLocalStore();
-    store.feedback[feedbackId] = record;
-    saveLocalStore(store);
-  } finally {
-    unlock();
+  if (!firestoreDisabled) {
+    try {
+      const db = getFirebaseAdminFirestore();
+      if (db) {
+        await db.collection('feedback').doc(feedbackId).set(record);
+      }
+    } catch {
+      firestoreDisabled = true;
+    }
+  }
+
+  if (!isProd) {
+    const unlock = await storeLock.acquire();
+    try {
+      const store = initLocalStore();
+      store.feedback[feedbackId] = record;
+      saveLocalStore(store);
+    } finally {
+      unlock();
+    }
   }
 
   return record;
@@ -2326,6 +2758,26 @@ export async function submitUserFeedback(data: {
  * List recent feedback records.
  */
 export async function listFeedbackRecords(limit = 50): Promise<FeedbackRecord[]> {
+  const isProd = isProductionEnvironment();
+
+  if (!firestoreDisabled) {
+    try {
+      const db = getFirebaseAdminFirestore();
+      if (db) {
+        const snapshot = await db.collection('feedback').orderBy('createdAt', 'desc').limit(limit).get();
+        if (!snapshot.empty) {
+          return snapshot.docs.map(doc => doc.data() as FeedbackRecord);
+        }
+      }
+    } catch {
+      firestoreDisabled = true;
+    }
+  }
+
+  if (isProd) {
+    return [];
+  }
+
   const store = initLocalStore();
   const allFeedbacks = Object.values(store.feedback);
   return allFeedbacks.sort((a, b) => b.createdAt - a.createdAt).slice(0, limit);
@@ -2335,19 +2787,51 @@ export async function listFeedbackRecords(limit = 50): Promise<FeedbackRecord[]>
  * Get metrics for Admin & Observability.
  */
 export async function getAdminMetrics() {
-  const store = initLocalStore();
+  const isProd = isProductionEnvironment();
+  let allSubs: SubscriptionRecord[] = [];
+  let allAiLogs: AiLogRecord[] = [];
+  let feedbacks: FeedbackRecord[] = [];
 
-  const allSubs = Object.values(store.subscriptions);
+  if (!firestoreDisabled) {
+    try {
+      const db = getFirebaseAdminFirestore();
+      if (db) {
+        const [subsSnap, logsSnap, feedSnap] = await Promise.all([
+          db.collection('subscriptions').limit(500).get().catch(() => null),
+          db.collection('ai_logs').limit(500).get().catch(() => null),
+          db.collection('feedback').limit(500).get().catch(() => null)
+        ]);
+
+        if (subsSnap && !subsSnap.empty) {
+          allSubs = subsSnap.docs.map(d => d.data() as SubscriptionRecord);
+        }
+        if (logsSnap && !logsSnap.empty) {
+          allAiLogs = logsSnap.docs.map(d => d.data() as AiLogRecord);
+        }
+        if (feedSnap && !feedSnap.empty) {
+          feedbacks = feedSnap.docs.map(d => d.data() as FeedbackRecord);
+        }
+      }
+    } catch {
+      firestoreDisabled = true;
+    }
+  }
+
+  if (!isProd && allSubs.length === 0 && allAiLogs.length === 0) {
+    const store = initLocalStore();
+    allSubs = Object.values(store.subscriptions);
+    allAiLogs = Object.values(store.ai_logs);
+    feedbacks = Object.values(store.feedback);
+  }
+
   const totalUsers = allSubs.length;
   const proUsers = allSubs.filter(s => s.plan === 'PRO' && s.status === 'active').length;
   const freeUsers = totalUsers - proUsers;
 
-  const allAiLogs = Object.values(store.ai_logs);
   const totalCostUsd = allAiLogs.reduce((acc, l) => acc + (l.estimatedCostUsd || 0), 0);
   const totalCostBrl = allAiLogs.reduce((acc, l) => acc + (l.estimatedCostBrl || 0), 0);
   const totalAiCalls = allAiLogs.length;
 
-  const feedbacks = Object.values(store.feedback);
   const totalFeedbacks = feedbacks.length;
   const usefulFeedbacks = feedbacks.filter(f => f.rating === 'useful').length;
   const satisfactionRatePct = totalFeedbacks > 0 ? Number(((usefulFeedbacks / totalFeedbacks) * 100).toFixed(1)) : 100;

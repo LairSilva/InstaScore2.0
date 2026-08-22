@@ -18,7 +18,9 @@
     "test:retention": "tsx test-retention.ts",
     "test:limits": "tsx test-methodology-limits.ts",
     "test:a11y": "tsx test-wcag-accessibility.ts",
-    "test:metadata": "tsx test-metadata-first-render.ts"
+    "test:metadata": "tsx test-metadata-first-render.ts",
+    "test:billing": "tsx test-billing-firestore.ts",
+    "test:webhook": "tsx test-webhook-security.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

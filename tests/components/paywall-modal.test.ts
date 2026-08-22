@@ -87,5 +87,25 @@ export function runPaywallModalComponentTests(): { passed: number; failed: numbe
     }
   });
 
+  // 8. Centralized apiFetch and zero x-user-id leakage
+  test("PaywallModal strictly uses apiFetch and contains zero x-user-id headers", () => {
+    if (!paywallContent.includes('apiFetch')) {
+      throw new Error("PaywallModal must use centralized apiFetch client");
+    }
+    if (paywallContent.includes("'x-user-id'") || paywallContent.includes('"x-user-id"')) {
+      throw new Error("PaywallModal must not pass x-user-id header");
+    }
+  });
+
+  // 9. Unauthenticated state handling and login integration
+  test("PaywallModal integrates Google login flow and prompts unauthenticated users before calling checkout", () => {
+    if (!paywallContent.includes('loginWithGoogle')) {
+      throw new Error("PaywallModal must support Google login flow for unauthenticated users");
+    }
+    if (!paywallContent.includes('Conecte-se para continuar') && !paywallContent.includes('Conectar com Google')) {
+      throw new Error("PaywallModal must prompt unauthenticated users to connect");
+    }
+  });
+
   return { passed, failed, tests: logs };
 }

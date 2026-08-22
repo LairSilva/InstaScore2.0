@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Crown, Sparkles, CheckCircle2, AlertCircle, ArrowUpRight, ShieldCheck, Zap, XCircle } from 'lucide-react';
 import { useEntitlements } from '../hooks/useEntitlements';
-import { getAuthIdToken } from '../lib/firebase';
+import { apiFetch } from '../lib/api-client';
 
 interface MyPlanViewProps {
   onOpenPaywall: () => void;
@@ -9,7 +9,7 @@ interface MyPlanViewProps {
 }
 
 export const MyPlanView: React.FC<MyPlanViewProps> = ({ onOpenPaywall, onBack }) => {
-  const { subscription, usage, planConfig, isPro, userId, refreshStatus } = useEntitlements();
+  const { subscription, usage, planConfig, isPro, refreshStatus } = useEntitlements();
   const [canceling, setCanceling] = useState(false);
   const [cancelMessage, setCancelMessage] = useState<string | null>(null);
 
@@ -20,24 +20,17 @@ export const MyPlanView: React.FC<MyPlanViewProps> = ({ onOpenPaywall, onBack })
 
     setCanceling(true);
     try {
-      const token = await getAuthIdToken().catch(() => null);
-      const res = await fetch('/api/subscription/cancel', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-          'x-user-id': userId
-        },
-        body: JSON.stringify({ userId })
+      const data = await apiFetch<{ success: boolean; message: string }>('/api/subscription/cancel', {
+        method: 'POST'
       });
 
-      const data = await res.json();
       if (data.success) {
         setCancelMessage(data.message);
         await refreshStatus();
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to cancel:', err);
+      setCancelMessage(err?.message || 'Não foi possível cancelar a assinatura no momento.');
     } finally {
       setCanceling(false);
     }

@@ -265,15 +265,12 @@ app.post("/api/checkout/create-session", requireAuth, async (req, res) => {
       });
     }
 
-    const appUrl = `${req.protocol}://${req.get('host')}`;
-
     const sessionRecord = await createCheckoutSessionServer({
       userId: req.user!.uid,
       planId,
       cycle,
       paymentMethod,
-      userEmail,
-      appUrl
+      userEmail
     });
 
     const selectedPlanConfig = getPlanConfig(sessionRecord.planId);

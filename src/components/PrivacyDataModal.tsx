@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { RETENTION_POLICIES } from '../lib/data-retention-client';
 import { useAccessibleModal } from '../hooks/useAccessibleModal';
+import { apiFetch } from '../lib/api-client';
 
 interface PrivacyDataModalProps {
   isOpen: boolean;
@@ -72,15 +73,7 @@ export default function PrivacyDataModal({
     setIsExporting(true);
     setErrorText(null);
     try {
-      const res = await fetch('/api/user/export-data', {
-        headers: {
-          'x-user-id': userId || 'anonymous'
-        }
-      });
-      if (!res.ok) {
-        throw new Error(`Falha na exportação (HTTP ${res.status})`);
-      }
-      const data = await res.json();
+      const data = await apiFetch<any>('/api/user/export-data');
       
       // Trigger client-side JSON download
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -111,16 +104,9 @@ export default function PrivacyDataModal({
     setIsDeleting(true);
     setErrorText(null);
     try {
-      const res = await fetch('/api/user/delete-data', {
-        method: 'DELETE',
-        headers: {
-          'x-user-id': userId || 'anonymous'
-        }
+      const data = await apiFetch<any>('/api/user/delete-data', {
+        method: 'DELETE'
       });
-      if (!res.ok) {
-        throw new Error(`Falha ao excluir dados (HTTP ${res.status})`);
-      }
-      const data = await res.json();
 
       // Clear local storage items
       try {

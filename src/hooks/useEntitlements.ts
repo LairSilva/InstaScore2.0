@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { auth, ensureAuthUser, getAuthIdToken } from '../lib/firebase';
+import { auth, ensureAuthUser } from '../lib/firebase';
 import { PlanType, EntitlementKey, PLANS, PlanConfig } from '../config/plans';
+import { apiFetch } from '../lib/api-client';
 
 export interface SubscriptionState {
   userId: string;
@@ -30,22 +31,18 @@ export function useEntitlements() {
     try {
       const uid = await ensureAuthUser();
       setUserId(uid);
-      const token = await getAuthIdToken().catch(() => null);
 
-      const res = await fetch(`/api/subscription/status?userId=${uid}`, {
-        headers: {
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-          'x-user-id': uid
-        }
-      });
+      const data = await apiFetch<{
+        success: boolean;
+        subscription: SubscriptionState;
+        usage: UsageState;
+        planConfig: PlanConfig;
+      }>('/api/subscription/status');
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          setSubscription(data.subscription);
-          setUsage(data.usage);
-          setPlanConfig(data.planConfig);
-        }
+      if (data && data.success) {
+        setSubscription(data.subscription);
+        setUsage(data.usage);
+        setPlanConfig(data.planConfig);
       }
     } catch (err) {
       console.warn('[useEntitlements] Failed to fetch subscription status:', err);

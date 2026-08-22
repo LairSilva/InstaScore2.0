@@ -9,7 +9,7 @@ let adminApp: App | null = null;
 let adminAuth: Auth | null = null;
 let adminFirestore: Firestore | null = null;
 
-function resolveProjectId(): string {
+export function resolveProjectId(): string {
   if (process.env.FIREBASE_PROJECT_ID) {
     return process.env.FIREBASE_PROJECT_ID;
   }
@@ -34,10 +34,10 @@ function resolveProjectId(): string {
     console.warn("[FirebaseAdmin] Failed to read firebase-applet-config.json:", err);
   }
 
-  return "gen-lang-client-0841913154";
+  return "ai-studio-instascoreai-c9d99461-7aa9-47a7-aff5-dede15dc2ebe";
 }
 
-function resolveFirestoreDatabaseId(): string {
+export function resolveFirestoreDatabaseId(): string {
   if (process.env.FIRESTORE_DATABASE_ID) {
     return process.env.FIRESTORE_DATABASE_ID;
   }
@@ -87,11 +87,19 @@ export function getFirebaseAuth(): Auth {
 }
 
 export function isFirestoreAdminConfigured(): boolean {
+  if (process.env.DISABLE_FIRESTORE_ADMIN === "true") {
+    return false;
+  }
   return Boolean(
     process.env.FIRESTORE_EMULATOR_HOST ||
     process.env.GOOGLE_APPLICATION_CREDENTIALS ||
     process.env.FIREBASE_SERVICE_ACCOUNT_KEY ||
-    process.env.USE_FIREBASE_ADMIN_CREDENTIALS === "true"
+    process.env.USE_FIREBASE_ADMIN_CREDENTIALS === "true" ||
+    process.env.K_SERVICE ||
+    process.env.GOOGLE_CLOUD_PROJECT ||
+    process.env.GCLOUD_PROJECT ||
+    process.env.FIREBASE_PROJECT_ID ||
+    fs.existsSync(path.resolve(process.cwd(), "firebase-applet-config.json"))
   );
 }
 
@@ -102,15 +110,20 @@ export function getFirebaseAdminFirestore(): Firestore | null {
   if (adminFirestore) {
     return adminFirestore;
   }
-  const app = getFirebaseAdminApp();
-  const dbId = resolveFirestoreDatabaseId();
   try {
-    adminFirestore = getFirestore(app, dbId);
-  } catch (e) {
-    console.warn("[FirebaseAdmin] Custom databaseId instantiation fallback to default:", e);
-    adminFirestore = getFirestore(app);
+    const app = getFirebaseAdminApp();
+    const dbId = resolveFirestoreDatabaseId();
+    try {
+      adminFirestore = getFirestore(app, dbId);
+    } catch (e) {
+      console.warn("[FirebaseAdmin] Custom databaseId instantiation fallback to default:", e);
+      adminFirestore = getFirestore(app);
+    }
+    return adminFirestore;
+  } catch (err) {
+    console.warn("[FirebaseAdmin] Failed to initialize Firestore Admin client:", err);
+    return null;
   }
-  return adminFirestore;
 }
 
 /**

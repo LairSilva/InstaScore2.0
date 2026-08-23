@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldCheck, Sparkles, Check, QrCode, CreditCard, X, ArrowRight, Lock, Loader2, CheckCircle2, AlertCircle, ExternalLink, RefreshCw, LogIn } from 'lucide-react';
-import { PLANS } from '../config/plans';
+import { PLANS, getAnnualDiscountInfo } from '../config/plans';
 import { useAccessibleModal } from '../hooks/useAccessibleModal';
 import { getAuthIdToken, ensureAuthUser, auth, loginWithGoogle, getOrEnsureAuthUser } from '../lib/firebase';
 import { apiFetch, ApiError } from '../lib/api-client';
@@ -270,19 +270,19 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
         )}
 
         <p id="paywall-modal-desc" className="text-slate-400 text-sm mb-6">
-          Sua análise identificou oportunidades estratégicas. No plano Pro você libera o plano de ação passo a passo, gerador de roteiros, calendário e diagnósticos ilimitados.
+          Sua análise identificou oportunidades estratégicas. No plano PRO você desbloqueia o plano de ação executivo, Content Lab completo, Mentor IA estratégico, histórico de diagnósticos e auditorias aprofundadas.
         </p>
 
-        {/* Benefits Grid */}
+        {/* Benefits Grid: Entregáveis PRO Estruturados */}
         {!activeSession && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6" role="list">
             {[
-              'Diagnósticos e auditorias profundas',
-              'Plano de crescimento tático C.A.G.E.',
-              'Gerador de Roteiros de Reels & Carrosséis',
-              'Coleção de Ganchos e Prompts de Alta Conversão',
-              'Calendário e Estratégias no Modo Start',
-              'Histórico completo de diagnósticos'
+              'Plano de Ação Tático de 7 Dias (Passo a Passo)',
+              'Content Lab: Roteiros de Reels & Carrosséis Prontos',
+              'Mentor IA Estratégico Especialista em Conversão',
+              'Diagnósticos & Auditorias Aprofundadas Ilimitadas',
+              'Histórico Completo de Evolução e Scores',
+              'Gerador de Bios Anti-Clichê & Otimizador de SEO'
             ].map((benefit, idx) => (
               <div key={idx} role="listitem" className="flex items-center gap-2.5 text-xs sm:text-sm text-slate-200 bg-slate-800/40 p-2.5 rounded-xl border border-slate-800">
                 <div className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
@@ -299,14 +299,14 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
           <div 
             role="radiogroup" 
             aria-label="Ciclo de faturamento"
-            className="flex items-center justify-center p-1 bg-slate-950 border border-slate-800 rounded-2xl mb-6 max-w-xs mx-auto"
+            className="flex items-center justify-center p-1 bg-slate-950 border border-slate-800 rounded-2xl mb-6 max-w-sm mx-auto"
           >
             <button
               type="button"
               role="radio"
               aria-checked={cycle === 'monthly'}
               onClick={() => setCycle('monthly')}
-              className={`flex-1 py-2 text-xs sm:text-sm font-medium rounded-xl transition-all cursor-pointer min-h-[44px] ${
+              className={`flex-1 py-2 px-3 text-xs sm:text-sm font-medium rounded-xl transition-all cursor-pointer min-h-[44px] ${
                 cycle === 'monthly'
                   ? 'bg-indigo-600 text-white shadow-md'
                   : 'text-slate-400 hover:text-slate-200'
@@ -319,15 +319,15 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
               role="radio"
               aria-checked={cycle === 'annual'}
               onClick={() => setCycle('annual')}
-              className={`flex-1 py-2 text-xs sm:text-sm font-medium rounded-xl transition-all flex items-center justify-center gap-1 cursor-pointer min-h-[44px] ${
+              className={`flex-1 py-2 px-3 text-xs sm:text-sm font-medium rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer min-h-[44px] ${
                 cycle === 'annual'
                   ? 'bg-indigo-600 text-white shadow-md'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               <span>Anual</span>
-              <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded-full font-bold">
-                -27% OFF
+              <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full font-bold whitespace-nowrap">
+                {getAnnualDiscountInfo('PRO').economyBadgeText}
               </span>
             </button>
           </div>
@@ -336,12 +336,29 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
         {/* Price Display */}
         {!activeSession && (
           <div className="text-center mb-6">
-            <div className="text-3xl sm:text-4xl font-extrabold text-slate-50">
-              {selectedPrice}
-            </div>
-            <div className="text-xs text-slate-400 mt-1">
-              {cycle === 'annual' ? 'Cobrado anualmente (R$ 349,90). Cancele quando quiser.' : 'Cobrança mensal recorrente sem fidelidade. Cancele com 1 clique.'}
-            </div>
+            {cycle === 'annual' ? (
+              <div className="space-y-2">
+                <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-semibold">
+                  <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
+                  <span>Economize {getAnnualDiscountInfo('PRO').formattedEconomy} no plano anual ({getAnnualDiscountInfo('PRO').discountBadgeText})</span>
+                </div>
+                <div className="text-3xl sm:text-4xl font-extrabold text-slate-50 tracking-tight">
+                  {PLANS.PRO.formattedPriceAnnual.replace('/ano', '')}<span className="text-base sm:text-lg font-normal text-slate-400">/ano</span>
+                </div>
+                <p className="text-xs text-slate-300">
+                  Equivale a <strong className="text-emerald-300 font-bold">{getAnnualDiscountInfo('PRO').formattedMonthlyEquivalent}/mês</strong> (12x de {PLANS.PRO.formattedPriceMonthly} = R$ 478,80). Parcela única anual com cancelamento simples.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <div className="text-3xl sm:text-4xl font-extrabold text-slate-50 tracking-tight">
+                  {PLANS.PRO.formattedPriceMonthly.replace('/mês', '')}<span className="text-base sm:text-lg font-normal text-slate-400">/mês</span>
+                </div>
+                <p className="text-xs text-slate-400">
+                  Cobrança mensal recorrente sem fidelidade. Cancele com 1 clique a qualquer momento.
+                </p>
+              </div>
+            )}
           </div>
         )}
 
@@ -421,7 +438,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
                   </>
                 ) : (
                   <>
-                    <span>Desbloquear Acesso Pro Agora</span>
+                    <span>Desbloquear meu plano estratégico</span>
                     <ArrowRight className="w-5 h-5" />
                   </>
                 )}

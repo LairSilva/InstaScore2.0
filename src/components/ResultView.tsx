@@ -574,7 +574,129 @@ export function ResultView({
         </div>
       </div>
 
-      {/* 4. Critical Gaps as Tactical Missions */}
+      {/* 4. Instagram Research-Informed Intelligence Modules */}
+      {diagnosis.intelligence && (
+        <div className="space-y-8 pt-6">
+          {/* Intelligence Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-5 rounded-2xl bg-gradient-to-r from-[#121829] via-[#0E1322] to-[#121829] border border-cyan-500/20 shadow-lg">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+                <Compass size={18} />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white font-display">Consultoria Estratégica Research-Informed</h3>
+                <p className="text-[11px] text-slate-400">Modo: <strong className="text-cyan-300 uppercase font-mono">{diagnosis.intelligence.analysisMode || "estrutural"}</strong> • Baseada em evidências observáveis e diretrizes públicas da Meta</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-[10px] font-mono font-bold">
+                Clareza: {diagnosis.intelligence.positioning?.clarityScore || 75}%
+              </span>
+            </div>
+          </div>
+
+          {/* Positioning & Core Promise */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="glass-panel p-5 rounded-2xl border border-white/10 space-y-2">
+              <span className="text-[10px] font-mono font-bold text-cyan-400 uppercase tracking-wider">Público Diagnosticado</span>
+              <p className="text-xs text-white leading-relaxed font-medium">{diagnosis.intelligence.positioning?.audience || "Público identificado no perfil."}</p>
+            </div>
+            <div className="glass-panel p-5 rounded-2xl border border-white/10 space-y-2">
+              <span className="text-[10px] font-mono font-bold text-emerald-400 uppercase tracking-wider">Promessa Central</span>
+              <p className="text-xs text-white leading-relaxed font-medium">{diagnosis.intelligence.positioning?.promise || "Promessa central do perfil."}</p>
+            </div>
+            <div className="glass-panel p-5 rounded-2xl border border-white/10 space-y-2">
+              <span className="text-[10px] font-mono font-bold text-[#FA26A0] uppercase tracking-wider">Diferenciação Perceptível</span>
+              <p className="text-xs text-white leading-relaxed font-medium">{diagnosis.intelligence.positioning?.differentiation || "Diferencial de posicionamento."}</p>
+            </div>
+          </div>
+
+          {/* Recommendation Eligibility & Meta Guidelines Risk */}
+          {diagnosis.intelligence.recommendationEligibility && (
+            <div className="glass-panel p-5 rounded-2xl border border-white/10 space-y-3 bg-gradient-to-br from-[#101422] to-[#0A0D18]">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck size={16} className="text-emerald-400" />
+                  <h4 className="text-xs font-bold text-white uppercase font-mono tracking-wider">Avaliação de Risco de Elegibilidade (Diretrizes Meta)</h4>
+                </div>
+                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase ${
+                  diagnosis.intelligence.recommendationEligibility.riskLevel === 'high'
+                    ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                    : diagnosis.intelligence.recommendationEligibility.riskLevel === 'medium'
+                    ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                    : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                }`}>
+                  Risco Estimado: {diagnosis.intelligence.recommendationEligibility.riskLevel === 'low' ? 'Baixo' : diagnosis.intelligence.recommendationEligibility.riskLevel === 'medium' ? 'Médio' : 'Alto'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                {diagnosis.intelligence.recommendationEligibility.limitations?.[0] || "Estimativa técnica baseada nas diretrizes públicas da Meta para distribuição no Explorar e Reels. Esta é uma avaliação de risco baseada em evidências observadas e não uma decisão oficial do Instagram."}
+              </p>
+              <div className="text-[11px] text-slate-400 bg-white/5 p-2.5 rounded-xl border border-white/5">
+                <strong className="text-slate-300">Aviso:</strong> A elegibilidade oficial final depende exclusivamente dos algoritmos e políticas internas da Meta.
+              </div>
+            </div>
+          )}
+
+          {/* Priority Experiments P0 / P1 / P2 */}
+          {diagnosis.intelligence.priorityExperiments && diagnosis.intelligence.priorityExperiments.length > 0 && (
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <h3 className="text-lg font-bold text-white font-display flex items-center gap-2">
+                  <Zap size={18} className="text-[#FF5E36]" />
+                  Experimentos Editoriais de 7 Dias
+                </h3>
+                <p className="text-slate-400 text-xs">Hipóteses práticas testáveis: qual problema resolver, qual ação executar e como validar se funcionou.</p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {diagnosis.intelligence.priorityExperiments.map((exp, idx) => (
+                  <div key={idx} className="glass-panel p-5 rounded-2xl border border-white/10 space-y-3 flex flex-col justify-between hover:border-cyan-500/30 transition-all">
+                    <div className="space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="px-2 py-0.5 rounded-md bg-[#FF5E36]/20 text-[#FF5E36] font-mono font-bold text-[10px] uppercase">
+                          {exp.priority} • {exp.format}
+                        </span>
+                        <span className="text-[10px] font-mono text-cyan-300 bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">Janela: {exp.testWindow}</span>
+                      </div>
+                      <h4 className="text-sm font-bold text-white font-display leading-snug">{exp.problem}</h4>
+                      
+                      <div className="space-y-1.5 text-xs text-slate-300 pt-1">
+                        <div className="p-2.5 rounded-xl bg-cyan-950/20 border border-cyan-800/30">
+                          <strong className="text-cyan-300 block text-[10px] font-mono uppercase">1. Hipótese Testável</strong>
+                          <span>{exp.hypothesis}</span>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-emerald-950/20 border border-emerald-800/30">
+                          <strong className="text-emerald-300 block text-[10px] font-mono uppercase">2. Ação a Executar</strong>
+                          <span>{exp.action}</span>
+                        </div>
+                        {exp.successCriterion && (
+                          <div className="p-2.5 rounded-xl bg-indigo-950/20 border border-indigo-800/30">
+                            <strong className="text-indigo-300 block text-[10px] font-mono uppercase">3. Critério de Sucesso</strong>
+                            <span>{exp.successCriterion}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {exp.hook && (
+                        <div className="p-2.5 rounded-xl bg-white/5 border border-white/5 text-[11px] text-slate-200">
+                          <span className="text-[#FA26A0] font-bold">Gancho Inicial:</span> "{exp.hook}"
+                        </div>
+                      )}
+                    </div>
+                    <div className="pt-2 border-t border-white/5 flex items-center justify-between text-[10px] font-mono text-slate-400">
+                      <span>Métrica Principal: <strong className="text-slate-200">{exp.primaryMetric}</strong></span>
+                      <span>Confiança: {Math.round(exp.confidence * 100)}%</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 5. Critical Gaps as Tactical Missions */}
       <div className="space-y-6 pt-6">
         <div className="space-y-1">
           <h2 className="text-2xl font-bold text-white font-display">Missões Táticas Prioritárias</h2>

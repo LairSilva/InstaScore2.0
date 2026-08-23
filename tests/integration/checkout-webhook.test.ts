@@ -44,8 +44,8 @@ export async function runCheckoutWebhookIntegrationTests(): Promise<{ passed: nu
     }
   });
 
-  // 2. Create Card checkout session (Annual cycle with R$ 349,90)
-  await test("createCheckoutSessionServer calculates annual billing official price (R$ 349,90) properly", async () => {
+  // 2. Create Card checkout session (Annual cycle with R$ 399,00)
+  await test("createCheckoutSessionServer calculates annual billing official price (R$ 399,00) properly", async () => {
     const session = await createCheckoutSessionServer({
       userId: "test_user_card_annual",
       planId: "PRO",
@@ -54,10 +54,10 @@ export async function runCheckoutWebhookIntegrationTests(): Promise<{ passed: nu
     });
 
     if (!session.sessionId) throw new Error("Missing sessionId in response");
-    if (session.amount !== 349.90) throw new Error(`Expected annual amount 349.90, got ${session.amount}`);
-    if (PLANS.PRO.priceAnnual !== 349.90) throw new Error(`PLANS.PRO.priceAnnual must be 349.90, got ${PLANS.PRO.priceAnnual}`);
-    if (PLANS.PRO.formattedPriceAnnual !== "R$ 349,90/ano") {
-      throw new Error(`Expected formattedPriceAnnual 'R$ 349,90/ano', got ${PLANS.PRO.formattedPriceAnnual}`);
+    if (session.amount !== 399.00) throw new Error(`Expected annual amount 399.00, got ${session.amount}`);
+    if (PLANS.PRO.priceAnnual !== 399.00) throw new Error(`PLANS.PRO.priceAnnual must be 399.00, got ${PLANS.PRO.priceAnnual}`);
+    if (PLANS.PRO.formattedPriceAnnual !== "R$ 399,00/ano") {
+      throw new Error(`Expected formattedPriceAnnual 'R$ 399,00/ano', got ${PLANS.PRO.formattedPriceAnnual}`);
     }
     if (!session.checkoutUrl) {
       throw new Error("Expected valid checkoutUrl for card redirection");
@@ -198,8 +198,8 @@ export async function runCheckoutWebhookIntegrationTests(): Promise<{ passed: nu
     }
   });
 
-  // 12. S2S validation for Annual Plan: accepts 349.90, rejects old 399.00
-  await test("verifyMercadoPagoPaymentS2S accepts official annual 349.90 and rejects legacy 399.00 with PRICE_MISMATCH", async () => {
+  // 12. S2S validation for Annual Plan: accepts 399.00, rejects legacy 349.90
+  await test("verifyMercadoPagoPaymentS2S accepts official annual 399.00 and rejects legacy 349.90 with PRICE_MISMATCH", async () => {
     const testUser = "test_user_annual_s2s_" + Date.now();
     const session = await createCheckoutSessionServer({
       userId: testUser,
@@ -208,12 +208,12 @@ export async function runCheckoutWebhookIntegrationTests(): Promise<{ passed: nu
       paymentMethod: "card"
     });
 
-    // Valid S2S payment with official 349.90
+    // Valid S2S payment with official 399.00
     const validAnnualFixture = {
       id: "pay_annual_valid_" + Date.now(),
       status: "approved",
       currency_id: "BRL",
-      transaction_amount: 349.90,
+      transaction_amount: 399.00,
       metadata: {
         user_id: testUser,
         session_id: session.sessionId,
@@ -227,15 +227,15 @@ export async function runCheckoutWebhookIntegrationTests(): Promise<{ passed: nu
       fixturePayment: validAnnualFixture
     });
     if (!validRes.verified) {
-      throw new Error(`Valid annual payment of 349.90 failed verification: ${validRes.errorMessage}`);
+      throw new Error(`Valid annual payment of 399.00 failed verification: ${validRes.errorMessage}`);
     }
 
-    // Legacy S2S payment with 399.00 should fail with PRICE_MISMATCH
+    // Legacy S2S payment with 349.90 should fail with PRICE_MISMATCH
     const legacyAnnualFixture = {
       id: "pay_annual_legacy_" + Date.now(),
       status: "approved",
       currency_id: "BRL",
-      transaction_amount: 399.00, // Legacy price must be rejected
+      transaction_amount: 349.90, // Legacy price must be rejected
       metadata: {
         user_id: testUser,
         session_id: session.sessionId,
@@ -249,7 +249,7 @@ export async function runCheckoutWebhookIntegrationTests(): Promise<{ passed: nu
       fixturePayment: legacyAnnualFixture
     });
     if (legacyRes.verified) {
-      throw new Error("Legacy annual payment of 399.00 was accepted unexpectedly");
+      throw new Error("Legacy annual payment of 349.90 was accepted unexpectedly");
     }
     if (legacyRes.errorCode !== "PRICE_MISMATCH" && legacyRes.errorCode !== "AMOUNT_MISMATCH") {
       throw new Error(`Expected PRICE_MISMATCH or AMOUNT_MISMATCH, got ${legacyRes.errorCode}`);
@@ -360,7 +360,7 @@ export async function runCheckoutWebhookIntegrationTests(): Promise<{ passed: nu
       cycle: "annual",
       paymentMethod: "pix"
     });
-    if (v3.amount !== 349.90 || !v3.pixQrCodeText || !v3.pixQrCodeBase64) {
+    if (v3.amount !== 399.00 || !v3.pixQrCodeText || !v3.pixQrCodeBase64) {
       throw new Error("Annual Pix variant failed contract validation");
     }
 
@@ -371,7 +371,7 @@ export async function runCheckoutWebhookIntegrationTests(): Promise<{ passed: nu
       cycle: "annual",
       paymentMethod: "card"
     });
-    if (v4.amount !== 349.90 || !v4.checkoutUrl) {
+    if (v4.amount !== 399.00 || !v4.checkoutUrl) {
       throw new Error("Annual Card variant failed contract validation");
     }
   });

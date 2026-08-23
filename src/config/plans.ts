@@ -80,9 +80,9 @@ export const PLANS: Record<PlanType, PlanConfig> = {
     name: 'InstaScore Pro',
     description: 'Experiência executiva completa: resolva todos os gargalos com IA profunda, roteiros prontos, matriz C.A.G.E., carrosséis, stories e bios de alta conversão.',
     priceMonthly: 39.90,
-    priceAnnual: 349.90,
+    priceAnnual: 399.00,
     formattedPriceMonthly: 'R$ 39,90/mês',
-    formattedPriceAnnual: 'R$ 349,90/ano',
+    formattedPriceAnnual: 'R$ 399,00/ano',
     quotas: {
       maxDiagnosesTotal: -1, // Unlimited total
       maxDiagnosesPerMonth: 15,
@@ -131,8 +131,33 @@ export function isWithinQuota(plan: PlanType, quotaKey: QuotaKey, currentUsage: 
 }
 
 /**
- * AI Cost estimation helper (in USD and BRL)
+ * Dynamic calculation of Annual Discount and Economy relative to 12 months of monthly subscription
  */
+export function getAnnualDiscountInfo(plan: PlanType = 'PRO') {
+  const config = getPlanConfig(plan);
+  const monthlyAnnualized = Number((config.priceMonthly * 12).toFixed(2));
+  const annualPrice = config.priceAnnual;
+  const economyAmount = Number((monthlyAnnualized - annualPrice).toFixed(2));
+  const discountPercent = monthlyAnnualized > 0 
+    ? Math.round(((monthlyAnnualized - annualPrice) / monthlyAnnualized) * 100) 
+    : 0;
+  const monthlyEquivalent = annualPrice > 0 
+    ? Number((annualPrice / 12).toFixed(2)) 
+    : 0;
+
+  return {
+    monthlyPrice: config.priceMonthly,
+    annualPrice,
+    monthlyAnnualized,
+    economyAmount,
+    discountPercent,
+    formattedEconomy: `R$ ${economyAmount.toFixed(2).replace('.', ',')}`,
+    formattedMonthlyEquivalent: `R$ ${monthlyEquivalent.toFixed(2).replace('.', ',')}`,
+    discountBadgeText: `${discountPercent}% OFF`,
+    economyBadgeText: `Economize R$ ${economyAmount.toFixed(2).replace('.', ',')}`
+  };
+}
+
 export function calculateEstimatedAiCost(modelUsed: string, inputTokens: number, outputTokens: number) {
   // Estimated prices per 1M tokens (USD)
   let inputRatePerM = 0.075;  // Gemini 2.5 Flash

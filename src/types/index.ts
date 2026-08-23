@@ -1,5 +1,26 @@
-import { DiagnosisInput } from "../schemas/diagnosis";
+import {
+  DiagnosisInput,
+  InstagramIntelligence,
+  Evidence,
+  ActionExperiment,
+  ContentPillar,
+  FormatAnalysis,
+  RecommendationEligibility,
+  VoiceGuidance,
+  EditorialCalendarItem
+} from "../schemas/diagnosis";
 import { ScoringResult } from "../config/methodology";
+
+export type {
+  InstagramIntelligence,
+  Evidence,
+  ActionExperiment,
+  ContentPillar,
+  FormatAnalysis,
+  RecommendationEligibility,
+  VoiceGuidance,
+  EditorialCalendarItem
+};
 
 export interface OnboardingData {
   userName: string;

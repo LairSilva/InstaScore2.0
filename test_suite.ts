@@ -93,8 +93,8 @@ assert(parsedZod.success, "DiagnosisSchema valida payload completo e correto", p
 console.log("\n--- TESTE C: Planos, Entitlements e Quotas ---");
 assert(PLANS.FREE.priceMonthly === 0, "Plano FREE configurado com preço R$ 0");
 assert(PLANS.PRO.priceMonthly === 39.90, "Plano PRO configurado com preço mensal R$ 39,90");
-assert(PLANS.PRO.priceAnnual === 349.90, "Plano PRO configurado com preço anual R$ 349,90");
-assert(PLANS.PRO.formattedPriceAnnual === "R$ 349,90/ano", "Plano PRO formatado com R$ 349,90/ano");
+assert(PLANS.PRO.priceAnnual === 399.00, "Plano PRO configurado com preço anual R$ 399,00");
+assert(PLANS.PRO.formattedPriceAnnual === "R$ 399,00/ano", "Plano PRO formatado com R$ 399,00/ano");
 assert(!hasEntitlement("FREE", "contentAi"), "Plano FREE bloqueia Content AI (Paywall exigido)");
 assert(hasEntitlement("PRO", "contentAi"), "Plano PRO libera Content AI");
 assert(hasEntitlement("PRO", "reelsGenerator"), "Plano PRO libera Gerador de Reels");
@@ -122,7 +122,7 @@ const annualSession = await createCheckoutSessionServer({
   cycle: "annual",
   paymentMethod: "card"
 });
-assert(annualSession.amount === 349.90, "Valor correto atribuído à sessão anual (R$ 349,90)");
+assert(annualSession.amount === 399.00, "Valor correto atribuído à sessão anual (R$ 399,00)");
 
 // ==========================================
 // TEST E: START MODE GENERATOR ENGINE

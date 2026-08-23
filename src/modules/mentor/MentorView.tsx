@@ -84,11 +84,18 @@ export function MentorView({ diagnosisResult, userName, digitalTwin: rawTwin }: 
       </div>
 
       {/* Warning Panel */}
-      <div className="mb-4 bg-slate-900 border border-slate-800 rounded-xl p-3 flex items-start gap-3">
-        <AlertCircle size={16} className="text-amber-500 mt-0.5 shrink-0" />
-        <p className="text-xs text-slate-400 leading-relaxed">
-          <strong className="text-slate-200">Contexto Carregado:</strong> A IA tem acesso ao seu C.A.G.E Score de {digitalTwin.metrics?.overallScore || 50}, gargalos críticos e padrões comportamentais identificados.
-        </p>
+      <div className="mb-4 bg-slate-900 border border-slate-800 rounded-xl p-3 flex items-start justify-between gap-3 flex-wrap">
+        <div className="flex items-start gap-3">
+          <AlertCircle size={16} className="text-cyan-400 mt-0.5 shrink-0" />
+          <p className="text-xs text-slate-400 leading-relaxed">
+            <strong className="text-slate-200">Contexto Carregado:</strong> C.A.G.E Score de {digitalTwin.metrics?.overallScore || 50}/100, pilares editoriais diagnosticados, orientações de voz e gargalos críticos.
+          </p>
+        </div>
+        {diagnosisResult.diagnosis?.intelligence?.positioning && (
+          <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-[10px] font-mono font-bold">
+            Clareza: {diagnosisResult.diagnosis.intelligence.positioning.clarityScore}%
+          </span>
+        )}
       </div>
 
       {/* Chat Area */}

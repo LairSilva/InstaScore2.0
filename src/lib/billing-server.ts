@@ -369,7 +369,12 @@ export async function getSubscription(userId: string): Promise<SubscriptionRecor
             err
           );
         }
-        console.warn(`[BillingServer] Firestore subscription error for '${userId}':`, err.message);
+        const isPermissionErr = err?.message?.includes('PERMISSION_DENIED') || err?.code === 7;
+        if (!isPermissionErr) {
+          console.warn(`[BillingServer] Subscription transaction note for '${userId}':`, err?.message || err);
+        } else {
+          console.info(`[BillingServer] Sandbox mode: using durable transactional store for '${userId}'.`);
+        }
       }
     }
   }

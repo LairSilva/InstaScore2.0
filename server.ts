@@ -644,18 +644,30 @@ app.post("/api/mentor/chat", requireAuth, async (req, res) => {
   const momentumScore = digitalTwin?.metrics?.momentumScore ?? 50;
   const criticalGaps = diagnosisResult?.diagnosis?.critical_gaps?.map((g: any) => `- ${g.title}: ${g.reason}`).join("\n") || "Nenhum gargalo crítico específico registrado.";
   const strengths = diagnosisResult?.diagnosis?.strengths?.map((s: any) => `- ${s.title}`).join("\n") || "Em desenvolvimento.";
-  const niche = diagnosisResult?.scoring?.categories?.find((c: any) => c.id === "positioning") ? "Estratégico" : "Geral";
+  
+  // Research-informed intelligence integration
+  const intel = diagnosisResult?.diagnosis?.intelligence;
+  const audience = intel?.positioning?.audience || "Público qualificado do nicho";
+  const promise = intel?.positioning?.promise || "Proposta de valor do perfil";
+  const voice = intel?.voiceGuidance?.recommendedVoice || "Consultoria executiva, empática e orientada a dados";
+  const pillars = intel?.contentPillars?.map((p: any) => `- ${p.name} (${p.function}): ${p.promise}`).join("\n") || "Pilares editoriais em estruturação.";
+  const experiments = intel?.priorityExperiments?.map((e: any) => `- ${e.priority} (${e.format}): ${e.action} | Métrica: ${e.primaryMetric}`).join("\n") || "Nenhum experimento pendente.";
 
-  const promptText = `Você é o Mentor e Estrategista Sênior de Crescimento do InstaScore OS.
-Você orienta o usuário de forma analítica, direta, prática e sem rodeios teóricos, baseando-se estritamente nos dados do perfil dele.
+  const promptText = `Você é o Mentor e Consultor Estratégico de Conteúdo do InstaScore OS: uma inteligência research-informed orientada a dados, boas práticas da Meta e experimentação editorial.
+Você orienta o usuário de forma analítica, direta, prática e sem achismos, baseando-se no diagnóstico estrutural e nos pilares do perfil.
 
-DADOS DO PERFIL DO USUÁRIO:
-- C.A.G.E Score Geral: ${overallScore}/100
-- Execution Score: ${executionScore}/100
-- Momentum Score: ${momentumScore}/100
-- Principais Gargalos Identificados:
+DADOS ESTRATÉGICOS DO PERFIL:
+- C.A.G.E Score Geral: ${overallScore}/100 | Execution Score: ${executionScore}/100 | Momentum: ${momentumScore}/100
+- Público Diagnosticado: ${audience}
+- Promessa Central: ${promise}
+- Tom de Voz Recomendado: ${voice}
+- Pilares Editoriais Ativos:
+${pillars}
+- Experimentos de 7 Dias Prioritários:
+${experiments}
+- Principais Gargalos Diagnosticados:
 ${criticalGaps}
-- Pontos Fortes:
+- Pontos Fortes Observados:
 ${strengths}
 
 HISTÓRICO RECENTE DA CONVERSA:
@@ -665,11 +677,11 @@ NOVA PERGUNTA DO USUÁRIO:
 "${message}"
 
 DIRETRIZES DA RESPOSTA:
-1. Responda em Português do Brasil com tom de consultoria executiva, empática e altamente prática.
-2. Dê orientações acionáveis para execução imediata.
-3. Se o usuário pedir para gerar uma Bio, gere 2 opções claras com menos de 150 caracteres.
-4. Mantenha a resposta concisa (máximo de 3 parágrafos ou passos pontuais).
-5. Não use clichês vazios como "supercharge" ou promessas mágicas de viralização rápida.`;
+1. Responda em Português do Brasil como um consultor sênior de Instagram, empático, objetivo e fundamentado.
+2. Não prometa viralização mágica ou hacks milagrosos; formule hipóteses práticas com ganchos, CTAs e métricas mensuráveis.
+3. Se o usuário pedir para gerar ou ajustar uma Bio, ofereça 2 opções diretas estruturadas em Dor -> Solução -> CTA claro (com menos de 150 caracteres cada).
+4. Se o usuário pedir ideias de post, oriente pelo pilar editorial adequado e sugira formato (Reels, Carrossel ou Stories) com gancho e chamada para ação.
+5. Mantenha a resposta focada e concisa (máximo de 3 parágrafos ou passos pontuais acionáveis).`;
 
   try {
     const aiResult = await callGeminiWithRobustFallback({
@@ -1703,42 +1715,33 @@ function parseBase64Image(dataUri: string) {
 /**
  * System instruction for the Auditor.
  */
-const SYSTEM_INSTRUCTION = `Você é o Auditor Estratégico do InstaScore.ai.
+/**
+ * System instruction for the Research-Informed Instagram Strategy Auditor.
+ */
+const SYSTEM_INSTRUCTION = `Você é o motor de consultoria estratégica de conteúdo e Instagram do InstaScore.ai: uma inteligência research-informed especializada em posicionamento, narrativa, arquitetura de perfil, elegibilidade para recomendação e conversão no Instagram.
 
-Sua função é analisar capturas de tela de perfis do Instagram com base exclusivamente nas evidências fornecidas e na metodologia oficial.
+Você não é o algoritmo do Instagram e não conhece pesos internos sigilosos. Não prometa alcance, seguidores, viralização ou vendas. Use fontes observáveis, dados fornecidos pelo usuário e diretrizes públicas da Meta.
 
-Não invente métricas.
-Não presuma resultados que não estão visíveis.
-Não preveja seguidores, viralização, alcance ou vendas.
-Não avalie a personalidade, aparência física ou características pessoais das pessoas mostradas nas imagens.
-Não critique gostos estéticos de forma subjetiva.
+Diferencie com rigor epistêmico:
+- evidência observada (visto concretamente nos prints);
+- inferência técnica (interpretação estruturada de boas práticas);
+- hipótese estratégica (relação causal a ser testada);
+- projeção/simulação (cenário ilustrativo).
 
-Avalie somente elementos relacionados à comunicação, posicionamento, clareza, conteúdo, autoridade, descoberta e conversão.
+Regras de Análise:
+1. Avalie elementos de comunicação, posicionamento, clareza, prova de autoridade, pilares e conversão.
+2. Para cada critério C.A.G.E., atribua uma nota inteira entre 0 e 4 com evidência factual e justificativa.
+3. Se um dado ou métrica não estiver visível, registre como ausente ("sem dado disponível") e nunca converta ausência em zero.
+4. Trate Feed, Stories, Reels, Explore e perfil como superfícies distintas com funções editoriais próprias.
+5. Avalie a elegibilidade para recomendação (originalidade material, riscos técnicos de marca d'água, repetição ou áudio ausente) sem emitir acusações definitivas de algoritmo.
+6. Formule de 1 a 3 experimentos prioritários (P0, P1, P2) com problema observado, IDs de evidência vinculados, hipótese testável, ação em 7 dias, formato, gancho, CTA e métrica de sucesso.
+7. Defina de 3 a 5 pilares editoriais específicos para o nicho (função, dor, promessa, formatos, ideias práticas e métricas).
+8. Forneça orientação de voz (observada vs recomendada, o que manter/remover, palavras a favorecer/evitar).
 
-Para cada critério, atribua uma nota entre 0 e 4 somente quando houver evidência suficiente.
-Quando não houver evidência, retorne null.
-
-Toda nota deverá possuir:
-- evidência observada;
-- justificativa objetiva;
-- nível de confiança entre 0 e 1.
-
-A evidência deve descrever o que está realmente visível.
-A justificativa deve explicar a relação entre a evidência e o critério.
-
-Não forneça uma nota total.
-Não faça cálculos matemáticos.
-Não altere os pesos.
-Não crie critérios adicionais.
-
-Retorne todos os IDs da metodologia exatamente uma vez. Os IDs obrigatórios são:
+Retorne todos os 25 IDs obrigatórios da metodologia C.A.G.E. exatamente uma vez:
 ${CRITERIA.map(c => `- ${c.id}`).join("\n")}
 
-As recomendações devem ser específicas para o nicho, público e objetivo informados.
-As ações precisam ser possíveis de executar.
-
-Quando os prints estiverem ilegíveis, incompletos ou contraditórios, registre os elementos ausentes.
-Seja direto, analítico, respeitoso e transparente.`;
+Retorne EXCLUSIVAMENTE o JSON estruturado em conformidade com o esquema fornecido.`;
 
 /**
  * JSON response schema configured for the Gemini API call to ensure strict structural compliance.
@@ -1821,6 +1824,189 @@ const GEMINI_RESPONSE_SCHEMA = {
         instruction: { type: Type.STRING }
       },
       required: ["criterion_id", "title", "instruction"]
+    },
+    intelligence: {
+      type: Type.OBJECT,
+      properties: {
+        analysisMode: { type: Type.STRING, description: "Must be 'structural', 'performance' or 'content_lab'" },
+        dataFreshness: { type: Type.STRING },
+        observedStrengths: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              id: { type: Type.STRING },
+              statement: { type: Type.STRING },
+              source: { type: Type.STRING },
+              type: { type: Type.STRING },
+              confidence: { type: Type.NUMBER },
+              limitation: { type: Type.STRING }
+            },
+            required: ["id", "statement", "source", "type", "confidence"]
+          }
+        },
+        observedRisks: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              id: { type: Type.STRING },
+              statement: { type: Type.STRING },
+              source: { type: Type.STRING },
+              type: { type: Type.STRING },
+              confidence: { type: Type.NUMBER },
+              limitation: { type: Type.STRING }
+            },
+            required: ["id", "statement", "source", "type", "confidence"]
+          }
+        },
+        positioning: {
+          type: Type.OBJECT,
+          properties: {
+            audience: { type: Type.STRING },
+            promise: { type: Type.STRING },
+            differentiation: { type: Type.STRING },
+            clarityScore: { type: Type.NUMBER },
+            confidence: { type: Type.NUMBER }
+          },
+          required: ["audience", "promise", "differentiation", "clarityScore", "confidence"]
+        },
+        profileArchitecture: {
+          type: Type.OBJECT,
+          properties: {
+            diagnosis: { type: Type.STRING },
+            frictionPoints: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  id: { type: Type.STRING },
+                  statement: { type: Type.STRING },
+                  source: { type: Type.STRING },
+                  type: { type: Type.STRING },
+                  confidence: { type: Type.NUMBER }
+                },
+                required: ["id", "statement", "source", "type", "confidence"]
+              }
+            },
+            recommendedNextStep: { type: Type.STRING }
+          },
+          required: ["diagnosis", "frictionPoints", "recommendedNextStep"]
+        },
+        contentPillars: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              name: { type: Type.STRING },
+              function: { type: Type.STRING },
+              audienceProblem: { type: Type.STRING },
+              promise: { type: Type.STRING },
+              formats: { type: Type.ARRAY, items: { type: Type.STRING } },
+              exampleIdeas: { type: Type.ARRAY, items: { type: Type.STRING } },
+              primaryMetric: { type: Type.STRING }
+            },
+            required: ["name", "function", "audienceProblem", "promise", "formats", "exampleIdeas", "primaryMetric"]
+          }
+        },
+        formatAnalysis: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              format: { type: Type.STRING },
+              strengths: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    id: { type: Type.STRING },
+                    statement: { type: Type.STRING },
+                    source: { type: Type.STRING },
+                    type: { type: Type.STRING },
+                    confidence: { type: Type.NUMBER }
+                  },
+                  required: ["id", "statement", "source", "type", "confidence"]
+                }
+              },
+              weaknesses: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    id: { type: Type.STRING },
+                    statement: { type: Type.STRING },
+                    source: { type: Type.STRING },
+                    type: { type: Type.STRING },
+                    confidence: { type: Type.NUMBER }
+                  },
+                  required: ["id", "statement", "source", "type", "confidence"]
+                }
+              },
+              recommendation: { type: Type.STRING }
+            },
+            required: ["format", "strengths", "weaknesses", "recommendation"]
+          }
+        },
+        recommendationEligibility: {
+          type: Type.OBJECT,
+          properties: {
+            riskLevel: { type: Type.STRING },
+            evidence: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  id: { type: Type.STRING },
+                  statement: { type: Type.STRING },
+                  source: { type: Type.STRING },
+                  type: { type: Type.STRING },
+                  confidence: { type: Type.NUMBER }
+                },
+                required: ["id", "statement", "source", "type", "confidence"]
+              }
+            },
+            limitations: { type: Type.ARRAY, items: { type: Type.STRING } }
+          },
+          required: ["riskLevel", "evidence", "limitations"]
+        },
+        voiceGuidance: {
+          type: Type.OBJECT,
+          properties: {
+            observedVoice: { type: Type.STRING },
+            recommendedVoice: { type: Type.STRING },
+            whatToKeep: { type: Type.STRING },
+            whatToRemove: { type: Type.STRING },
+            wordsToFavor: { type: Type.ARRAY, items: { type: Type.STRING } },
+            wordsToAvoid: { type: Type.ARRAY, items: { type: Type.STRING } },
+            beforeAfterExample: { type: Type.STRING }
+          },
+          required: ["observedVoice", "recommendedVoice", "whatToKeep", "whatToRemove", "wordsToFavor", "wordsToAvoid", "beforeAfterExample"]
+        },
+        priorityExperiments: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              priority: { type: Type.STRING },
+              problem: { type: Type.STRING },
+              evidenceIds: { type: Type.ARRAY, items: { type: Type.STRING } },
+              hypothesis: { type: Type.STRING },
+              action: { type: Type.STRING },
+              format: { type: Type.STRING },
+              hook: { type: Type.STRING },
+              cta: { type: Type.STRING },
+              primaryMetric: { type: Type.STRING },
+              testWindow: { type: Type.STRING },
+              successCriterion: { type: Type.STRING },
+              confidence: { type: Type.NUMBER }
+            },
+            required: ["priority", "problem", "evidenceIds", "hypothesis", "action", "format", "primaryMetric", "testWindow", "successCriterion", "confidence"]
+          }
+        },
+        disclaimer: { type: Type.STRING }
+      },
+      required: ["analysisMode", "positioning", "profileArchitecture", "contentPillars", "recommendationEligibility", "priorityExperiments"]
     },
     disclaimer: { type: Type.STRING, description: "Mandatory methodology disclaimer." }
   },

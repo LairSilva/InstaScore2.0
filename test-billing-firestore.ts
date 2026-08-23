@@ -164,7 +164,7 @@ async function runBillingTests() {
   });
 
   assert("Checkout session criada com ID", Boolean(session.sessionId));
-  assert("Checkout session anual criada com valor oficial R$ 349,90", session.amount === 349.90);
+  assert("Checkout session anual criada com valor oficial R$ 399,00", session.amount === 399.00);
   assert("Status inicial é pending", session.status === "pending");
   assert("PIX QR code gerado", Boolean(session.pixQrCodeText));
 

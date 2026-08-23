@@ -836,9 +836,6 @@ export default function App() {
               <span className="hidden sm:inline">Privacidade</span>
             </button>
 
-            <span className="text-xs font-semibold px-3 py-1.5 rounded-full bg-gradient-to-r from-[#FF5E36]/15 via-[#E1306C]/15 to-[#833AB4]/15 text-[#FA26A0] border border-[#E1306C]/30 select-none shadow-[0_0_15px_rgba(225,48,108,0.2)] hidden sm:inline-block">
-              V11 Commercial
-            </span>
             {view === "result" && (
               <button
                 type="button"

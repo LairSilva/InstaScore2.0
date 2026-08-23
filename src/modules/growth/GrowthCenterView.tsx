@@ -116,14 +116,26 @@ export function GrowthCenterView({
     }
   };
 
+  const experiments = diagnosis.intelligence?.priorityExperiments || [];
+
   const allActions = [
     {
       id: "top_action",
       title: diagnosis.tomorrow_action.title,
       instruction: diagnosis.tomorrow_action.instruction,
       effort: "medium",
-      isPrimary: true
+      isPrimary: true,
+      category: "Ação Imediata"
     },
+    ...experiments.map((exp, idx) => ({
+      id: `exp_action_${idx}`,
+      title: `[${exp.priority}] ${exp.action}`,
+      instruction: `Hipótese: ${exp.hypothesis} | Formato: ${exp.format.toUpperCase()} | Janela: ${exp.testWindow} | Meta: ${exp.primaryMetric} (${exp.successCriterion || "Validação editorial"})`,
+      effort: exp.priority === "P0" ? "high" : "medium",
+      isExperiment: true,
+      experimentData: exp,
+      isPrimary: false
+    })),
     ...diagnosis.recommended_actions.map((act, idx) => ({
       id: `rec_action_${idx}`,
       title: act.title,
@@ -229,41 +241,59 @@ export function GrowthCenterView({
             </div>
 
             {/* Progress bar */}
-            <div className="w-full bg-slate-950 h-2.5 rounded-full overflow-hidden border border-slate-800">
+            <div 
+              role="progressbar" 
+              aria-valuenow={progressPercent} 
+              aria-valuemin={0} 
+              aria-valuemax={100}
+              aria-label="Progresso do plano tático de execução"
+              className="w-full bg-slate-950 h-2.5 rounded-full overflow-hidden border border-slate-800"
+            >
               <motion.div 
                 className="bg-gradient-to-r from-emerald-500 to-teal-400 h-full transition-all duration-300"
                 style={{ width: `${progressPercent}%` }}
               />
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-4" role="list" aria-label="Lista de ações e experimentos">
               {allActions.filter(a => !a.isPrimary).map((act) => {
                 const isCompleted = !!completedTasks[act.id];
                 return (
-                  <div key={act.id} className="flex gap-4 group">
+                  <div key={act.id} role="listitem" className="flex gap-4 group">
                     <button 
+                      type="button"
                       onClick={() => toggleTask(act.id)}
-                      className="mt-1 text-slate-500 hover:text-emerald-400 transition-colors cursor-pointer shrink-0"
+                      aria-label={`${isCompleted ? 'Desmarcar' : 'Concluir'} ${act.title}`}
+                      className="mt-1 text-slate-500 hover:text-emerald-400 focus:text-emerald-400 focus:outline-none transition-colors cursor-pointer shrink-0"
                     >
                       {isCompleted ? <CheckCircle size={22} className="text-emerald-500" /> : <Circle size={22} />}
                     </button>
-                    <div className="space-y-1 pb-4 border-b border-slate-800/60 w-full group-hover:border-slate-700 transition-colors">
-                      <div className="flex items-center justify-between gap-2">
+                    <div className="space-y-1.5 pb-4 border-b border-slate-800/60 w-full group-hover:border-slate-700 transition-colors">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
                         <h4 className={`text-sm font-bold transition-all ${isCompleted ? "text-slate-500 line-through" : "text-slate-200"}`}>
                           {act.title}
                         </h4>
-                        {(act as any).isCustom && (
-                          <span className="px-2 py-0.5 bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 text-[10px] font-bold rounded">
-                            {(act as any).source}
-                          </span>
-                        )}
+                        <div className="flex items-center gap-1.5">
+                          {(act as any).isExperiment && (
+                            <span className="px-2 py-0.5 bg-[#FF5E36]/15 text-[#FF5E36] border border-[#FF5E36]/30 text-[10px] font-mono font-bold rounded">
+                              Experimento 7D
+                            </span>
+                          )}
+                          {(act as any).isCustom && (
+                            <span className="px-2 py-0.5 bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 text-[10px] font-bold rounded">
+                              {(act as any).source}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <p className="text-xs text-slate-400 leading-relaxed">{act.instruction}</p>
                       
                       {!isCompleted && (
                         <button 
+                          type="button"
                           onClick={() => handleExecuteMission("custom_mission_resolver", act.title, act.instruction)}
-                          className="mt-2 text-xs font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1 cursor-pointer transition-colors"
+                          aria-label={`Solicitar agente de execução para ${act.title}`}
+                          className="mt-2 text-xs font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1 cursor-pointer transition-colors focus:outline-none focus:underline"
                         >
                           Solicitar Agente de Execução <ArrowRight size={12} />
                         </button>

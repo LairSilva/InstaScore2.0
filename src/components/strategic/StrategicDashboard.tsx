@@ -177,97 +177,287 @@ export const StrategicDashboard: React.FC<StrategicDashboardProps> = ({
 
   return (
     <div id="strategic_dashboard_section" className="space-y-8 text-white">
-      {/* Top Banner: Strategic Brain Consultative Overview */}
-      <div className="bg-gradient-to-br from-[#121826] via-[#0f172a] to-[#121826] border border-white/10 rounded-2xl p-6 sm:p-8 relative overflow-hidden shadow-2xl">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
+      {/* ==================================================
+          1. PRIMEIRA DOBRA DO DASHBOARD: SCORE → GARGALO → AÇÃO PRIORITÁRIA → EVIDÊNCIA → PLANO 7 DIAS
+          ================================================== */}
+      <div id="strategic-dashboard-hero-flow" className="space-y-6">
+        
+        {/* Top Header & Context */}
+        <div className="bg-gradient-to-br from-[#121826] via-[#0f172a] to-[#121826] border border-white/10 rounded-2xl p-6 sm:p-8 relative overflow-hidden shadow-2xl">
+          <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold uppercase tracking-wider">
-              <Compass className="w-3.5 h-3.5" />
-              Sua Estratégia • InstaScore Strategic Brain V12
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
+            <div className="space-y-2">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold uppercase tracking-wider">
+                <Compass className="w-3.5 h-3.5" />
+                Sua Estratégia • InstaScore Strategic Brain V12
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
+                Central de Posicionamento & DNA da Marca
+              </h2>
+              <p className="text-gray-400 text-sm max-w-2xl leading-relaxed">
+                Diagnóstico executivo de <strong className="text-white font-semibold">@{username}</strong>. Identifique seu gargalo crítico, a hipótese de validação e o plano de 7 dias para acelerar resultados.
+              </p>
             </div>
-            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
-              Central de Posicionamento & DNA da Marca
-            </h2>
-            <p className="text-gray-400 text-sm max-w-2xl leading-relaxed">
-              O InstaScore atua como seu estrategista sênior: cada postagem, bio e pilar é derivado do seu <strong>Profile DNA</strong> para eliminar conteúdos genéricos.
-            </p>
-          </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              id="btn_recalculate_strategy"
-              onClick={handleRecalculateStrategy}
-              disabled={isAnalyzing}
-              className="bg-white/10 hover:bg-white/15 text-white font-medium py-2.5 px-4 rounded-xl text-xs flex items-center gap-2 border border-white/10 transition-all disabled:opacity-50"
-            >
-              {isAnalyzing ? (
-                <>
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-400" />
-                  <span>Analisando DNA...</span>
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Recalcular Estratégia</span>
-                </>
-              )}
-            </button>
-
-            {onOpenContentLab && (
+            <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
-                id="btn_goto_content_lab"
-                onClick={onOpenContentLab}
-                className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-2.5 px-5 rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-emerald-500/20 transition-all transform active:scale-95"
+                id="btn_recalculate_strategy"
+                onClick={handleRecalculateStrategy}
+                disabled={isAnalyzing}
+                className="bg-white/10 hover:bg-white/15 text-white font-medium py-2.5 px-4 rounded-xl text-xs flex items-center gap-2 border border-white/10 transition-all disabled:opacity-50 cursor-pointer min-h-[44px]"
               >
-                <Sparkles className="w-4 h-4" />
-                <span>Abrir Content Lab</span>
+                {isAnalyzing ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                    <span>Analisando DNA...</span>
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Recalcular Estratégia</span>
+                  </>
+                )}
               </button>
-            )}
+
+              {onOpenContentLab && (
+                <button
+                  type="button"
+                  id="btn_goto_content_lab"
+                  onClick={onOpenContentLab}
+                  className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-2.5 px-5 rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-emerald-500/20 transition-all transform active:scale-95 cursor-pointer min-h-[44px]"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span>Abrir Content Lab</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* 3 Action Fast-Launchers */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-6 pt-6 border-t border-white/10">
+            <button
+              type="button"
+              onClick={() => setIsBioModalOpen(true)}
+              className="p-3.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-left transition-all group flex items-center justify-between cursor-pointer min-h-[44px]"
+            >
+              <div className="space-y-0.5">
+                <span className="text-[11px] font-bold text-indigo-400 uppercase tracking-wider block">Bio Strategy</span>
+                <span className="text-xs font-semibold text-white group-hover:text-indigo-300 transition-colors">Reconstruir Bio Anti-Clichê</span>
+              </div>
+              <ArrowUpRight className="w-4 h-4 text-gray-400 group-hover:text-indigo-400 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsNameModalOpen(true)}
+              className="p-3.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-left transition-all group flex items-center justify-between cursor-pointer min-h-[44px]"
+            >
+              <div className="space-y-0.5">
+                <span className="text-[11px] font-bold text-cyan-400 uppercase tracking-wider block">Name Strategy</span>
+                <span className="text-xs font-semibold text-white group-hover:text-cyan-300 transition-colors">Otimizar Nome & Handle</span>
+              </div>
+              <ArrowUpRight className="w-4 h-4 text-gray-400 group-hover:text-cyan-400 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+            </button>
+
+            <button
+              type="button"
+              onClick={onOpenContentLab}
+              className="p-3.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-left transition-all group flex items-center justify-between cursor-pointer min-h-[44px]"
+            >
+              <div className="space-y-0.5">
+                <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider block">Content Lab</span>
+                <span className="text-xs font-semibold text-white group-hover:text-emerald-300 transition-colors">Gerar Roteiros & Carrosséis</span>
+              </div>
+              <ArrowUpRight className="w-4 h-4 text-gray-400 group-hover:text-emerald-400 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+            </button>
           </div>
         </div>
 
-        {/* 3 Action Fast-Launchers */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-6 pt-6 border-t border-white/10">
-          <button
-            type="button"
-            onClick={() => setIsBioModalOpen(true)}
-            className="p-3.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-left transition-all group flex items-center justify-between"
-          >
-            <div className="space-y-0.5">
-              <span className="text-[11px] font-bold text-indigo-400 uppercase tracking-wider block">Bio Strategy</span>
-              <span className="text-xs font-semibold text-white group-hover:text-indigo-300 transition-colors">Reconstruir Bio Anti-Clichê</span>
+        {/* 5-Step Above-the-Fold Diagnostic Core Flow */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+          
+          {/* 1. SCORE DO PERFIL */}
+          <div className="lg:col-span-4 bg-[#121826] border border-white/10 rounded-2xl p-6 flex flex-col justify-between items-center text-center relative overflow-hidden">
+            <div className="w-full flex items-center justify-between pb-3 border-b border-white/10">
+              <span className="text-[11px] font-mono font-bold text-[#FA26A0] uppercase tracking-wider flex items-center gap-1.5">
+                <BarChart3 className="w-3.5 h-3.5 text-[#FF5E36]" /> 1. Score de Clareza
+              </span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                Auditado
+              </span>
             </div>
-            <ArrowUpRight className="w-4 h-4 text-gray-400 group-hover:text-indigo-400 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-          </button>
 
-          <button
-            type="button"
-            onClick={() => setIsNameModalOpen(true)}
-            className="p-3.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-left transition-all group flex items-center justify-between"
-          >
-            <div className="space-y-0.5">
-              <span className="text-[11px] font-bold text-cyan-400 uppercase tracking-wider block">Name Strategy</span>
-              <span className="text-xs font-semibold text-white group-hover:text-cyan-300 transition-colors">Otimizar Nome & Handle</span>
+            <div className="py-5 space-y-2">
+              <div className="text-5xl sm:text-6xl font-black text-white tracking-tight font-display">
+                {clarityScore.overall_score}<span className="text-xl font-mono text-slate-500 font-normal">/100</span>
+              </div>
+              <p className="text-xs text-slate-300 max-w-xs">
+                Potencial de destrave identificado: <strong className="text-emerald-400 font-bold">+{100 - clarityScore.overall_score} pts</strong> ao solucionar o gargalo principal.
+              </p>
             </div>
-            <ArrowUpRight className="w-4 h-4 text-gray-400 group-hover:text-cyan-400 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-          </button>
 
-          <button
-            type="button"
-            onClick={onOpenContentLab}
-            className="p-3.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-left transition-all group flex items-center justify-between"
-          >
-            <div className="space-y-0.5">
-              <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider block">Content Lab</span>
-              <span className="text-xs font-semibold text-white group-hover:text-emerald-300 transition-colors">Gerar Roteiros & Carrosséis</span>
+            <div className="w-full pt-3 border-t border-white/10 text-left space-y-2">
+              <div className="flex justify-between text-xs">
+                <span className="text-slate-400">Posicionamento:</span>
+                <span className="text-white font-mono font-bold">{clarityScore.positioning_clarity}%</span>
+              </div>
+              <div className="w-full bg-white/10 h-1.5 rounded-full overflow-hidden">
+                <div className="bg-gradient-to-r from-[#FF5E36] to-[#E1306C] h-full rounded-full" style={{ width: `${clarityScore.positioning_clarity}%` }} />
+              </div>
             </div>
-            <ArrowUpRight className="w-4 h-4 text-gray-400 group-hover:text-emerald-400 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-          </button>
+          </div>
+
+          {/* 2. PRINCIPAL GARGALO & 3. EVIDÊNCIA DETECTADA */}
+          <div className="lg:col-span-8 grid grid-cols-1 md:grid-cols-2 gap-4">
+            
+            {/* 2. Principal Gargalo */}
+            <div className="bg-[#121826] border border-rose-500/30 rounded-2xl p-5 space-y-3 flex flex-col justify-between">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-mono font-bold text-rose-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <AlertCircle className="w-3.5 h-3.5" /> 2. Principal Gargalo
+                  </span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/20 text-rose-300">
+                    Prioridade P0
+                  </span>
+                </div>
+                <h3 className="text-base font-bold text-white font-display">
+                  {clarityScore.biggest_bottleneck}
+                </h3>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  O visitante não identifica em menos de 3 segundos quem você ajuda, qual dor você resolve ou por que escolher você em vez da concorrência.
+                </p>
+              </div>
+
+              <div className="p-3 bg-rose-950/20 border border-rose-900/30 rounded-xl text-[11px] text-rose-200">
+                <strong>Impacto direto:</strong> Redução de taxa de conversão de visitantes do perfil em seguidores e leads no Direct.
+              </div>
+            </div>
+
+            {/* 3. Evidência Observada vs Inferência */}
+            <div className="bg-[#121826] border border-white/10 rounded-2xl p-5 space-y-3 flex flex-col justify-between">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-mono font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <Target className="w-3.5 h-3.5" /> 3. Evidência Observada
+                  </span>
+                  <span className="text-[10px] font-mono text-slate-400">Auditoria Real</span>
+                </div>
+                <div className="p-2.5 bg-white/5 rounded-xl border border-white/5 text-xs text-slate-300 space-y-1 font-mono">
+                  <span className="text-[10px] text-slate-500 uppercase block">Trecho de Posicionamento:</span>
+                  <p className="italic text-cyan-200">
+                    "{dna.unique_value_proposition || 'Ajudando você a ter resultados no digital'}"
+                  </p>
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  <strong className="text-slate-300 font-semibold">Inferência diagnóstica:</strong> Promessa ampla sem especificação de método, ticket ou microsegmento concreto.
+                </p>
+              </div>
+
+              <div className="text-[11px] font-mono text-slate-400 pt-2 border-t border-white/5">
+                Validação estrutural: Categoria {dna.niche}
+              </div>
+            </div>
+
+          </div>
+
         </div>
+
+        {/* 4. AÇÃO PRIORITÁRIA COM HIPÓTESE & MÉTRICA */}
+        <div className="bg-gradient-to-br from-[#121826] via-[#101E2E] to-[#121826] border border-emerald-500/30 rounded-2xl p-6 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-white/10">
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[11px] font-mono font-bold">
+                4. AÇÃO PRIORITÁRIA DE AJUSTE (15 MINUTOS)
+              </span>
+            </div>
+            <span className="text-xs font-mono text-emerald-300 font-semibold">
+              Impacto imediato no perfil
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+            
+            {/* O Que Executar */}
+            <div className="p-4 bg-white/5 rounded-xl border border-white/10 space-y-2">
+              <span className="text-[10px] font-mono font-bold text-emerald-400 uppercase tracking-wider block">
+                A) O Que Executar Agora
+              </span>
+              <h4 className="font-bold text-sm text-white">{clarityScore.recommendation}</h4>
+              <p className="text-slate-300 leading-relaxed">
+                Reescreva a primeira linha da bio com público e resultado tangível. Insira um link com benefício claro de clique.
+              </p>
+            </div>
+
+            {/* Hipótese a Ser Testada */}
+            <div className="p-4 bg-white/5 rounded-xl border border-white/10 space-y-2">
+              <span className="text-[10px] font-mono font-bold text-indigo-400 uppercase tracking-wider block">
+                B) Hipótese a Ser Testada
+              </span>
+              <h4 className="font-bold text-sm text-white">Aumento de Retenção e Conversão</h4>
+              <p className="text-slate-300 leading-relaxed">
+                Ao deixar a promessa ultra-específica, visitantes que chegam por Reels ou busca se sentem imediatamente qualificados e seguem.
+              </p>
+            </div>
+
+            {/* Métrica para Acompanhar */}
+            <div className="p-4 bg-white/5 rounded-xl border border-white/10 space-y-2">
+              <span className="text-[10px] font-mono font-bold text-amber-400 uppercase tracking-wider block">
+                C) Métrica para Acompanhar
+              </span>
+              <h4 className="font-bold text-sm text-white">Taxa de Cliques no Link & DMs</h4>
+              <p className="text-slate-300 leading-relaxed">
+                Monitore em 7 dias a proporção de cliques por visita ao perfil e a qualidade das mensagens recebidas.
+              </p>
+            </div>
+
+          </div>
+        </div>
+
+        {/* 5. PLANO DE 7 DIAS (PASSO A PASSO) */}
+        <div className="bg-[#121826] border border-white/10 rounded-2xl p-6 space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-white/10">
+            <div>
+              <h3 className="text-base font-bold text-white flex items-center gap-2 font-display">
+                <Target className="w-4 h-4 text-[#38BDF8]" />
+                5. Plano de Ação de 7 Dias (Passo a Passo)
+              </h3>
+              <p className="text-xs text-slate-400">Roteiro priorizado para executar sem sobrecarga.</p>
+            </div>
+            <span className="text-[11px] font-mono text-cyan-300 bg-cyan-500/10 px-3 py-1 rounded-full border border-cyan-500/20">
+              Passo 1 a 4 • Timeline
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+            <div className="p-3.5 bg-white/5 rounded-xl border border-white/5 space-y-1.5">
+              <span className="text-[10px] font-mono font-bold text-[#FF5E36] uppercase block">Dia 1 • Posicionamento</span>
+              <h4 className="font-bold text-white text-xs">Ajustar Bio e @Handle</h4>
+              <p className="text-slate-400 text-[11px]">Aplicar a bio reestruturada em 3 blocos e otimizar termos de busca do nicho.</p>
+            </div>
+
+            <div className="p-3.5 bg-white/5 rounded-xl border border-white/5 space-y-1.5">
+              <span className="text-[10px] font-mono font-bold text-[#FA26A0] uppercase block">Dia 2 • Destaques</span>
+              <h4 className="font-bold text-white text-xs">4 Destaques Essenciais</h4>
+              <p className="text-slate-400 text-[11px]">Comece Aqui, Método/Serviço, Prova/Depoimentos e Contato Direto.</p>
+            </div>
+
+            <div className="p-3.5 bg-white/5 rounded-xl border border-white/5 space-y-1.5">
+              <span className="text-[10px] font-mono font-bold text-[#38BDF8] uppercase block">Dia 3 • Reels com Gancho</span>
+              <h4 className="font-bold text-white text-xs">Vídeo de Autoridade</h4>
+              <p className="text-slate-400 text-[11px]">Gravar 1 Reels utilizando a fórmula anti-clichê nos primeiros 3 segundos.</p>
+            </div>
+
+            <div className="p-3.5 bg-white/5 rounded-xl border border-white/5 space-y-1.5">
+              <span className="text-[10px] font-mono font-bold text-emerald-400 uppercase block">Dia 7 • Validação</span>
+              <h4 className="font-bold text-white text-xs">Medir Conversão & Recalcular</h4>
+              <p className="text-slate-400 text-[11px]">Analisar métricas de visitas, cliques no link e recalcular novo score no InstaScore.</p>
+            </div>
+          </div>
+        </div>
+
       </div>
 
       {/* Grid: Profile Clarity Score & Dynamic Content DNA */}

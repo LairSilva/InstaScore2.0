@@ -93,33 +93,52 @@ export class ProfileDNAService {
   }
 
   /**
-   * Creates initial default Profile DNA from diagnosis context
+   * Creates initial default Profile DNA from diagnosis context and research-informed intelligence
    */
-  static createDefaultDNA(username: string, userId: string = 'anonymous', partial?: Partial<ProfileDNA>): ProfileDNA {
+  static createDefaultDNA(username: string, userId: string = 'anonymous', partial?: Partial<ProfileDNA>, diagnosisContext?: any): ProfileDNA {
     const cleanUsername = username || 'usuario';
+    const intel = diagnosisContext?.diagnosis?.intelligence || diagnosisContext?.intelligence;
+    
+    // Map pillars from intelligence if available
+    let dynamicPillars: ContentPillar[] | undefined = undefined;
+    if (intel?.contentPillars && Array.isArray(intel.contentPillars) && intel.contentPillars.length > 0) {
+      dynamicPillars = intel.contentPillars.map((p: any, idx: number) => ({
+        id: `pillar_${idx + 1}`,
+        name: p.name || `Pilar ${idx + 1}`,
+        objective: p.function === 'authority' ? 'Autoridade e Metodologia' : p.function === 'discovery' ? 'Descoberta e Alcance' : p.function === 'conversion' ? 'Conversão e Vendas' : p.function === 'proof' ? 'Prova Social e Casos' : 'Relacionamento',
+        target_audience: intel.positioning?.audience || 'Público Qualificado',
+        pain_or_problem: p.audienceProblem || 'Falta de clareza prática',
+        desire: p.promise || 'Dominar o processo',
+        content_type: (p.formats || ['Reel', 'Carrossel']).join(' / '),
+        formats: (p.formats || ['reel', 'carousel']).map((f: string) => f.toLowerCase().includes('reel') ? 'reel' : f.toLowerCase().includes('stor') ? 'stories' : 'carousel'),
+        example_topics: p.exampleIdeas || ['Ideia prática 1', 'Ideia prática 2'],
+        angles: ['contradição', 'erro', 'demonstração']
+      }));
+    }
+
     return {
       id: `dna_${sanitizeId(cleanUsername)}`,
       userId,
       account_name: cleanUsername,
       username: cleanUsername,
-      niche: partial?.niche || 'Negócios e Serviços',
-      subniche: partial?.subniche || 'Instagram para Negócios',
+      niche: partial?.niche || diagnosisContext?.onboarding?.niche || 'Negócios e Serviços',
+      subniche: partial?.subniche || diagnosisContext?.onboarding?.subNiche || 'Instagram para Negócios',
       microsegment: partial?.microsegment || 'Consultoria e Vendas Diretas',
-      target_audience: partial?.target_audience || 'Clientes qualificados em busca de soluções práticas',
+      target_audience: partial?.target_audience || intel?.positioning?.audience || 'Clientes qualificados em busca de soluções práticas',
       audience_pain: partial?.audience_pain || 'Tentam crescer e vender sem clareza estratégica nem consistência',
       audience_desire: partial?.audience_desire || 'Atrair clientes previsíveis e construir autoridade sólida',
       transformation: partial?.transformation || 'De perfil estagnado para canal estruturado de vendas e autoridade',
       offer: partial?.offer || 'Serviço Principal / Mentoria / Atendimento',
-      positioning: partial?.positioning || 'Especialista focado em resultados tangíveis sem enrolação',
-      unique_value_proposition: partial?.unique_value_proposition || 'Método direto e prático para transformar atenção em faturamento',
-      differentiator: partial?.differentiator || 'Abordagem prática baseada em dados e diagnóstico de gargalos reais',
+      positioning: partial?.positioning || intel?.positioning?.promise || 'Especialista focado em resultados tangíveis sem enrolação',
+      unique_value_proposition: partial?.unique_value_proposition || intel?.positioning?.differentiation || 'Método direto e prático para transformar atenção em faturamento',
+      differentiator: partial?.differentiator || intel?.positioning?.differentiation || 'Abordagem prática baseada em dados e diagnóstico de gargalos reais',
       authority: partial?.authority || 'Experiência prática de campo e método testado',
       personality: partial?.personality || 'Direto, analítico, seguro e acolhedor',
-      tone_of_voice: partial?.tone_of_voice || 'Profissional, direto, inspirador e sem jargões desnecessários',
+      tone_of_voice: partial?.tone_of_voice || intel?.voiceGuidance?.recommendedVoice || 'Profissional, direto, inspirador e sem jargões desnecessários',
       content_style: partial?.content_style || 'Carrosséis analíticos e Reels com quebra de padrão rápida',
       primary_goal: partial?.primary_goal || 'vendas',
       secondary_goal: partial?.secondary_goal || 'autoridade',
-      content_pillars: partial?.content_pillars || [
+      content_pillars: partial?.content_pillars || dynamicPillars || [
         {
           id: 'pillar_1',
           name: 'Diagnóstico & Desconstrução de Erros',

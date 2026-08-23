@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { PLANS, getAnnualDiscountInfo } from "./src/config/plans.js";
 import {
   validateWebhookSignature,
   verifyMercadoPagoPaymentS2S,
@@ -283,9 +284,34 @@ async function runSecurityTestSuite() {
   process.env = originalEnv;
 
   // -------------------------------------------------------------
-  // TEST 13: Annual Plan Pricing S2S Validation (R$ 349,90 vs R$ 399,00)
+  // TEST 13: Annual Plan Pricing S2S Validation (R$ 399,00 vs R$ 349,90)
   // -------------------------------------------------------------
-  console.log("\n🧪 Teste 13: Validação S2S do Plano Anual oficial (R$ 349,90) e rejeição do legado (R$ 399,00)");
+  console.log("\n🧪 Teste 13: Validação S2S do Plano Anual oficial (R$ 399,00) e rejeição do legado (R$ 349,90)");
+  
+  // 13.1 Fonte única da verdade em PLANS (PRO)
+  assert(PLANS.PRO.priceMonthly === 39.90, "Preço mensal oficial em PLANS.PRO é 39.90", `priceMonthly=${PLANS.PRO.priceMonthly}`);
+  assert(PLANS.PRO.priceAnnual === 399.00, "Preço anual oficial em PLANS.PRO é 399.00", `priceAnnual=${PLANS.PRO.priceAnnual}`);
+  assert(PLANS.PRO.formattedPriceMonthly === "R$ 39,90/mês", "Preço formatado mensal é 'R$ 39,90/mês'");
+  assert(PLANS.PRO.formattedPriceAnnual === "R$ 399,00/ano", "Preço formatado anual é 'R$ 399,00/ano'");
+
+  // 13.2 Cálculo dinâmico de desconto anual (getAnnualDiscountInfo)
+  const discountInfo = getAnnualDiscountInfo("PRO");
+  assert(discountInfo.monthlyPrice === 39.90, "getAnnualDiscountInfo: monthlyPrice é 39.90");
+  assert(discountInfo.annualPrice === 399.00, "getAnnualDiscountInfo: annualPrice é 399.00");
+  assert(discountInfo.monthlyAnnualized === 478.80, "getAnnualDiscountInfo: monthlyAnnualized é 478.80 (12 * 39.90)", `monthlyAnnualized=${discountInfo.monthlyAnnualized}`);
+  assert(discountInfo.economyAmount === 79.80, "getAnnualDiscountInfo: economyAmount é 79.80 (478.80 - 399.00)", `economyAmount=${discountInfo.economyAmount}`);
+  const rawDiscountRatio = (discountInfo.monthlyAnnualized - discountInfo.annualPrice) / discountInfo.monthlyAnnualized;
+  const rawDiscountPercent = rawDiscountRatio * 100;
+  assert(Number(rawDiscountPercent.toFixed(2)) === 16.67, "getAnnualDiscountInfo: desconto aproximado é 16.67%", `rawPercent=${rawDiscountPercent.toFixed(2)}%`);
+  assert(discountInfo.discountPercent === 17, "getAnnualDiscountInfo: percentual arredondado é 17% OFF", `discountPercent=${discountInfo.discountPercent}`);
+  const rawMonthlyEquivalent = Number((discountInfo.annualPrice / 12).toFixed(2));
+  assert(rawMonthlyEquivalent === 33.25, "getAnnualDiscountInfo: equivalente mensal é 33.25 (399 / 12)", `monthlyEquivalent=${rawMonthlyEquivalent}`);
+  assert(discountInfo.formattedEconomy === "R$ 79,80", "getAnnualDiscountInfo: formattedEconomy é 'R$ 79,80'");
+  assert(discountInfo.formattedMonthlyEquivalent === "R$ 33,25", "getAnnualDiscountInfo: formattedMonthlyEquivalent é 'R$ 33,25'");
+  assert(discountInfo.discountBadgeText === "17% OFF", "getAnnualDiscountInfo: discountBadgeText é '17% OFF'");
+  assert(discountInfo.economyBadgeText === "Economize R$ 79,80", "getAnnualDiscountInfo: economyBadgeText é 'Economize R$ 79,80'");
+
+  // 13.3 Criação de sessão de checkout no servidor
   const userIdAnnual = "user_sec_test_annual_" + Date.now();
   const sessionAnnual = await createCheckoutSessionServer({
     userId: userIdAnnual,
@@ -294,15 +320,17 @@ async function runSecurityTestSuite() {
     paymentMethod: "pix"
   });
 
-  assert(sessionAnnual.amount === 349.90, "Checkout session anual deve ter valor oficial R$ 349,90", `amount=${sessionAnnual.amount}`);
+  assert(sessionAnnual.amount === 399.00, "Checkout session anual deve ter valor oficial R$ 399,00 calculado pelo backend", `amount=${sessionAnnual.amount}`);
+  assert(sessionAnnual.planId === "PRO", "Checkout session anual tem planId='PRO'");
+  assert(sessionAnnual.cycle === "annual", "Checkout session anual tem cycle='annual'");
 
-  // Test legacy 399.00 payment rejection
-  const legacyPaymentId = "pay_legacy_399_" + Date.now();
+  // 13.4 Rejeição de pagamento legado de R$ 349,90 com PRICE_MISMATCH
+  const legacyPaymentId = "pay_legacy_349_" + Date.now();
   const legacyFixture = {
     id: legacyPaymentId,
     status: "approved",
     currency_id: "BRL",
-    transaction_amount: 399.00, // Legacy price must be rejected
+    transaction_amount: 349.90, // Legacy price must be rejected
     metadata: {
       user_id: userIdAnnual,
       session_id: sessionAnnual.sessionId,
@@ -318,17 +346,17 @@ async function runSecurityTestSuite() {
   });
   assert(
     !legacyS2S.verified && (legacyS2S.errorCode === "PRICE_MISMATCH" || legacyS2S.errorCode === "AMOUNT_MISMATCH"),
-    "Deve rejeitar pagamento legado de R$ 399,00 com PRICE_MISMATCH quando o oficial é R$ 349,90",
+    "Deve rejeitar pagamento legado de R$ 349,90 com PRICE_MISMATCH quando o oficial é R$ 399,00",
     `errorCode=${legacyS2S.errorCode}`
   );
 
-  // Test official 349.90 payment approval
-  const officialAnnualPaymentId = "pay_official_349_" + Date.now();
+  // 13.5 Aprovação de pagamento oficial de R$ 399,00
+  const officialAnnualPaymentId = "pay_official_399_" + Date.now();
   const officialAnnualFixture = {
     id: officialAnnualPaymentId,
     status: "approved",
     currency_id: "BRL",
-    transaction_amount: 349.90,
+    transaction_amount: 399.00,
     metadata: {
       user_id: userIdAnnual,
       session_id: sessionAnnual.sessionId,
@@ -342,7 +370,8 @@ async function runSecurityTestSuite() {
     expectedSessionId: sessionAnnual.sessionId,
     fixturePayment: officialAnnualFixture
   });
-  assert(officialS2S.verified, "Deve aprovar pagamento oficial de R$ 349,90 no plano Anual", officialS2S.errorMessage);
+  assert(officialS2S.verified, "Deve aprovar pagamento oficial de R$ 399,00 no plano Anual com metadados e status válidos", officialS2S.errorMessage);
+  assert(officialS2S.errorCode === undefined, "Nenhum erro na verificação do pagamento oficial de R$ 399,00");
 
   // -------------------------------------------------------------
   // TEST 14: Annual Webhook Execution & 365 Days Duration

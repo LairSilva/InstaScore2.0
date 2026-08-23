@@ -23,6 +23,15 @@ export function SimulatorView({ diagnosisResult, currentScore, digitalTwin: rawT
   
   const [prediction, setPrediction] = useState<PredictionResult | null>(null);
 
+  const intel = diagnosisResult?.diagnosis?.intelligence;
+  const diagnosedBioHypothesis = intel?.profileArchitecture?.recommendedNextStep;
+  const diagnosedExperiments = intel?.priorityExperiments || [];
+
+  const handleApplyPreset = (text: string, ctaText?: string) => {
+    setBio(text);
+    if (ctaText) setCta(ctaText);
+  };
+
   const handleSimulate = () => {
     setSimulating(true);
     setTimeout(() => {
@@ -85,6 +94,22 @@ export function SimulatorView({ diagnosisResult, currentScore, digitalTwin: rawT
         {/* Editor */}
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-6">
           <h3 className="font-bold text-white mb-4">Parâmetros de Simulação</h3>
+          
+          {/* Quick Presets from Diagnosis */}
+          {diagnosedBioHypothesis && (
+            <div className="p-3.5 bg-violet-950/20 border border-violet-800/30 rounded-2xl space-y-2">
+              <span className="text-[10px] font-mono font-bold text-violet-300 uppercase tracking-wider block">Sugestão do Diagnóstico de Arquitetura:</span>
+              <p className="text-xs text-slate-300">{diagnosedBioHypothesis}</p>
+              <button
+                type="button"
+                onClick={() => handleApplyPreset(diagnosedBioHypothesis, "Toque no link abaixo")}
+                className="text-[11px] font-bold text-cyan-300 hover:text-cyan-200 transition-colors cursor-pointer"
+              >
+                Aplicar esta sugestão no simulador →
+              </button>
+            </div>
+          )}
+
           <div className="space-y-5">
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Nova Bio</label>

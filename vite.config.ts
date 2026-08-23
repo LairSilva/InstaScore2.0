@@ -16,9 +16,11 @@ export default defineConfig(() => {
       include: ['react', 'react-dom', 'lucide-react', 'motion/react', 'framer-motion'],
     },
     build: {
+      outDir: 'dist',
+      emptyOutDir: true,
       cssCodeSplit: true,
       sourcemap: false,
-      chunkSizeWarningLimit: 600,
+      chunkSizeWarningLimit: 1000,
       rollupOptions: {
         output: {
           manualChunks(id) {

@@ -46,64 +46,67 @@ export default function LandingViewV7({ onStartOnboarding, onStartFromScratch, o
           </div>
 
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-white leading-[1.08] font-display">
-            Construa um Instagram que sabe exatamente{" "}
+            Pare de postar no escuro.{" "}
             <span className="bg-gradient-to-r from-[#FF5E36] via-[#E1306C] to-[#C084FC] bg-clip-text text-transparent">
-              para onde está indo.
+              Descubra o que está travando seu perfil.
             </span>
           </h1>
 
           <p className="text-base sm:text-lg text-slate-300 leading-relaxed max-w-xl mx-auto lg:mx-0 font-normal">
-            Você já tem um perfil ou está começando do zero? O InstaScore transforma sua ideia em uma estratégia clara de posicionamento, conteúdo, crescimento e conversão.
+            O InstaScore analisa posicionamento, conteúdo e clareza de conversão e transforma os principais gargalos em um plano de ação que você consegue executar.
           </p>
 
-          {/* Primary & Secondary Dual Call to Actions */}
-          <div className="space-y-3 pt-2">
-            <span className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider block">
-              Escolha seu ponto de partida:
-            </span>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              
-              {/* CTA 1: Já tenho Instagram */}
+          {/* Primary & Secondary Call to Actions */}
+          <div className="space-y-4 pt-2">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3.5 justify-center lg:justify-start">
+              {/* CTA Principal */}
               <button
                 type="button"
+                id="btn-hero-primary-cta"
                 onClick={onStartOnboarding}
-                className="p-4 bg-gradient-to-r from-[#FF5E36] via-[#E1306C] to-[#833AB4] hover:opacity-95 text-white rounded-2xl text-left shadow-[0_0_30px_rgba(225,48,108,0.4)] transition-all cursor-pointer flex flex-col justify-between group min-h-[90px] border border-white/20 active:scale-98"
+                className="px-8 py-4 bg-gradient-to-r from-[#FF5E36] via-[#E1306C] to-[#833AB4] hover:opacity-95 text-white rounded-2xl text-base font-bold shadow-[0_0_35px_rgba(225,48,108,0.4)] transition-all cursor-pointer flex items-center justify-center gap-2.5 group min-h-[52px] border border-white/20 active:scale-98"
               >
-                <div className="flex items-center justify-between w-full font-bold text-base font-display">
-                  <span>Já tenho Instagram</span>
-                  <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
-                </div>
-                <span className="text-xs text-slate-100 font-normal">Quero analisar e melhorar meu perfil.</span>
+                <span>Fazer meu diagnóstico gratuito</span>
+                <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
               </button>
 
-              {/* CTA 2: Começar do zero */}
+              {/* CTA Secundário discreto */}
               <button
                 type="button"
-                onClick={onStartFromScratch || onStartOnboarding}
-                className="p-4 bg-[#0F1424]/90 hover:bg-[#182038] border border-[#FA26A0]/40 text-white rounded-2xl text-left shadow-[0_0_25px_rgba(250,38,160,0.2)] transition-all cursor-pointer flex flex-col justify-between group min-h-[90px] backdrop-blur-xl active:scale-98"
+                id="btn-hero-secondary-demo"
+                onClick={onStartDemo}
+                className="px-6 py-4 bg-[#0F1424]/80 hover:bg-[#182038] border border-white/15 text-slate-200 hover:text-white rounded-2xl text-sm font-semibold transition-all cursor-pointer flex items-center justify-center gap-2 min-h-[52px] backdrop-blur-xl active:scale-98"
               >
-                <div className="flex items-center justify-between w-full font-bold text-base font-display text-[#FA26A0]">
-                  <span>Começar do zero</span>
-                  <Sparkles size={18} className="text-[#FF5E36] group-hover:rotate-12 transition-transform" />
-                </div>
-                <span className="text-xs text-slate-300 font-normal">Quero construir minha estratégia do início.</span>
+                <span>Ver um resultado de exemplo</span>
+                <Sparkles size={16} className="text-[#FF5E36]" />
               </button>
-
             </div>
-          </div>
 
-          {/* Micro Trust Stats */}
-          <div className="pt-4 flex flex-wrap items-center justify-center lg:justify-start gap-6 text-xs text-slate-400 font-mono">
-            <span className="flex items-center gap-1.5 text-emerald-400">
-              <ShieldCheck size={16} /> 1 Diagnóstico Gratuito
-            </span>
-            <span className="flex items-center gap-1.5 text-slate-300">
-              <Zap size={16} className="text-[#FF5E36]" /> Análise em 90 segundos
-            </span>
-            <span className="flex items-center gap-1.5 text-slate-300">
-              <Target size={16} className="text-[#38BDF8]" /> Metodologia C.A.G.E.
-            </span>
+            {/* Microprova abaixo do CTA */}
+            <p className="text-xs text-slate-400 font-mono text-center lg:text-left flex items-center justify-center lg:justify-start gap-1.5 flex-wrap">
+              <span>Resultado estrutural</span>
+              <span className="text-slate-600">•</span>
+              <span>Metodologia C.A.G.E.</span>
+              <span className="text-slate-600">•</span>
+              <span className="text-emerald-400 font-semibold">Sem cartão de crédito</span>
+            </p>
+
+            {/* Link secundário para quem está começando do zero */}
+            {onStartFromScratch && (
+              <div className="text-center lg:text-left pt-1">
+                <button
+                  type="button"
+                  id="btn-hero-start-scratch"
+                  onClick={onStartFromScratch}
+                  className="text-xs text-slate-400 hover:text-white transition-colors inline-flex items-center gap-1.5 cursor-pointer py-1 group"
+                >
+                  <span className="text-slate-400">Ainda não tem um perfil no ar?</span>
+                  <span className="font-semibold text-[#FA26A0] group-hover:underline underline-offset-4">
+                    Construa sua estratégia do zero →
+                  </span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -215,18 +218,28 @@ export default function LandingViewV7({ onStartOnboarding, onStartFromScratch, o
                 </div>
               </div>
 
-              {/* "Ação para Amanhã" Card */}
-              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-[#120924] to-[#1F0D3D] border border-[#E1306C]/40 flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <span className="text-[10px] text-[#FA26A0] font-mono font-bold uppercase tracking-wider block">
-                    Ação Prioritária nº 1
-                  </span>
-                  <p className="text-xs font-bold text-white">
-                    Otimizar @nome de usuário com palavras-chave do nicho
+              {/* "Ação Prioritária" Card */}
+              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-[#120924] to-[#1F0D3D] border border-[#E1306C]/40 flex items-center justify-between gap-3">
+                <div className="space-y-0.5 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-[#FA26A0] font-mono font-bold uppercase tracking-wider block">
+                      Ação Prioritária (15-30 min)
+                    </span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-mono font-semibold">
+                      Alto Impacto
+                    </span>
+                  </div>
+                  <p className="text-xs font-bold text-white truncate">
+                    Reescrever bio com proposta única de valor e CTA claro
                   </p>
                 </div>
-                <button type="button" onClick={onStartOnboarding} className="px-3 py-1.5 bg-[#E1306C] text-white rounded-lg text-xs font-bold shrink-0 hover:opacity-90">
-                  Corrigir
+                <button 
+                  type="button" 
+                  id="btn-mockup-action-start"
+                  onClick={onStartOnboarding} 
+                  className="px-3 py-1.5 bg-gradient-to-r from-[#FF5E36] to-[#E1306C] text-white rounded-xl text-xs font-bold shrink-0 hover:opacity-95 cursor-pointer shadow-[0_0_15px_rgba(225,48,108,0.3)]"
+                >
+                  Executar
                 </button>
               </div>
 
@@ -330,6 +343,151 @@ export default function LandingViewV7({ onStartOnboarding, onStartFromScratch, o
           </div>
 
         </div>
+      </section>
+
+      {/* ==================================================
+          2B. SEÇÃO "O QUE VOCÊ DESCOBRE EM POUCOS MINUTOS" (PROVA DE VALOR CONCRETA)
+          ================================================== */}
+      <section id="section-value-proof" className="glass-panel rounded-3xl p-6 sm:p-8 space-y-8 border border-white/15 bg-gradient-to-b from-[#0F1426]/90 via-[#090D1A]/90 to-[#05070E]/90 relative overflow-hidden">
+        
+        {/* Header da Seção */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 pb-6 border-b border-white/10">
+          <div className="space-y-2 max-w-2xl">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#E1306C]/15 border border-[#E1306C]/30 text-[#FA26A0] text-[11px] font-mono font-bold">
+              <Target size={14} className="text-[#FF5E36]" />
+              <span>ANATOMIA DE UMA ANÁLISE REAL</span>
+            </div>
+            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-white font-display tracking-tight">
+              O que você descobre em poucos minutos.
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-300">
+              O InstaScore não dá palpites subjetivos. Ele identifica exatamente o gargalo invisível, a evidência estrutural, o que fazer em 15 minutos e qual métrica você deve acompanhar.
+            </p>
+          </div>
+
+          <div className="shrink-0">
+            <span className="px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-[11px] font-mono text-slate-400 font-semibold flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+              Exemplo Demonstrativo de Aplicação
+            </span>
+          </div>
+        </div>
+
+        {/* 4-Stage Concrete Value Breakdown Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          
+          {/* Card 1: Gargalo Observado */}
+          <div className="p-5 rounded-2xl bg-[#080B14] border border-rose-500/30 space-y-3 relative flex flex-col justify-between">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-rose-400 flex items-center gap-1.5">
+                  <AlertTriangle size={13} /> 1. Gargalo Observado
+                </span>
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                  -18 pts no Score
+                </span>
+              </div>
+              <h3 className="text-base font-bold text-white font-display">
+                Bio sem proposta única de valor
+              </h3>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                O visitante bate o olho e entende a categoria geral, mas não identifica claramente para quem é a solução, qual dor específica é resolvida nem qual é o próximo passo.
+              </p>
+            </div>
+            <div className="pt-2 text-[11px] font-mono text-rose-300/80 border-t border-white/5">
+              Dimensão impactada: Conversão (C.A.G.E.)
+            </div>
+          </div>
+
+          {/* Card 2: Evidência Estrutural Mapeada */}
+          <div className="p-5 rounded-2xl bg-[#080B14] border border-white/10 space-y-3 relative flex flex-col justify-between">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                  <Eye size={13} className="text-[#38BDF8]" /> 2. Evidência Detectada no Perfil
+                </span>
+                <span className="text-[10px] font-mono text-slate-500">Texto Atual</span>
+              </div>
+              
+              {/* Snippet Before */}
+              <div className="p-3 bg-white/5 rounded-xl border border-white/10 font-mono text-xs text-slate-300 space-y-1">
+                <span className="text-[10px] text-slate-500 uppercase block">Trecho analisado:</span>
+                <p className="italic text-rose-200">
+                  “Ajudando você a crescer no digital 🚀 | Dicas diárias de negócios | Fale comigo no link 👇”
+                </p>
+              </div>
+
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Diagnóstico técnico: Ausência de público qualificado explícito, promessa genérica sem benefício tangível e link sem chamada contextual.
+              </p>
+            </div>
+            <div className="pt-2 text-[11px] font-mono text-slate-400 border-t border-white/5">
+              Tempo de leitura do visitante: ~2.8 segundos
+            </div>
+          </div>
+
+          {/* Card 3: Ação Recomendada & Entrega Pronta */}
+          <div className="p-5 rounded-2xl bg-gradient-to-br from-[#120924] to-[#1F0D3D] border border-[#E1306C]/40 space-y-3 relative flex flex-col justify-between">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#FA26A0] flex items-center gap-1.5">
+                  <Sparkles size={13} className="text-[#FF5E36]" /> 3. Ação Recomendada (15-30 min)
+                </span>
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  Alto Impacto
+                </span>
+              </div>
+              <h3 className="text-base font-bold text-white font-display">
+                Reescrever bio em 3 blocos estruturais
+              </h3>
+              
+              {/* Snippet After */}
+              <div className="p-3 bg-emerald-950/40 rounded-xl border border-emerald-500/40 font-mono text-xs text-slate-100 space-y-1">
+                <span className="text-[10px] text-emerald-400 uppercase font-bold block">Sugestão gerada pelo InstaScore:</span>
+                <p className="text-emerald-100 font-semibold leading-relaxed">
+                  “Mentoria de posicionamento para consultores que querem fechar contratos de R$ 5k+ pelo direct. Agende sua sessão diagnóstica no link 👇”
+                </p>
+              </div>
+            </div>
+            <div className="pt-2 text-[11px] font-mono text-emerald-400 border-t border-white/5">
+              Pronto para copiar, adaptar e colar no Instagram
+            </div>
+          </div>
+
+          {/* Card 4: Métricas para Acompanhar */}
+          <div className="p-5 rounded-2xl bg-[#080B14] border border-emerald-500/30 space-y-3 relative flex flex-col justify-between">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+                  <TrendingUp size={13} /> 4. Métricas para Acompanhar
+                </span>
+                <span className="text-[10px] font-mono text-slate-400">Validação em 7 dias</span>
+              </div>
+              <h3 className="text-base font-bold text-white font-display">
+                Onde você mede o resultado dessa mudança
+              </h3>
+              <div className="space-y-2 pt-1 text-xs">
+                <div className="p-2 bg-white/5 rounded-lg border border-white/5 flex items-center justify-between">
+                  <span className="text-slate-300">Cliques no link da bio</span>
+                  <span className="text-emerald-400 font-mono font-bold">Taxa de conversão</span>
+                </div>
+                <div className="p-2 bg-white/5 rounded-lg border border-white/5 flex items-center justify-between">
+                  <span className="text-slate-300">DMs com intenção de contratação</span>
+                  <span className="text-emerald-400 font-mono font-bold">Qualificação de leads</span>
+                </div>
+                <div className="p-2 bg-white/5 rounded-lg border border-white/5 flex items-center justify-between">
+                  <span className="text-slate-300">Retenção de novos visitantes</span>
+                  <span className="text-emerald-400 font-mono font-bold">Taxa de seguidores/visita</span>
+                </div>
+              </div>
+            </div>
+            <div className="pt-2 text-[11px] font-mono text-slate-400 border-t border-white/5">
+              Acompanhamento de progresso na sua Timeline OS
+            </div>
+          </div>
+
+        </div>
+
       </section>
 
       {/* ==================================================
@@ -534,102 +692,123 @@ export default function LandingViewV7({ onStartOnboarding, onStartFromScratch, o
       </section>
 
       {/* ==================================================
-          4. SEÇÃO "PESSOAS USANDO" (SOCIAL PROOF REAL/DEMO)
+          4. SEÇÃO "CENÁRIOS DE APLICAÇÃO DEMONSTRATIVOS"
           ================================================== */}
       <section className="space-y-10 border-t border-white/10 pt-10">
         
         <div className="text-center space-y-2 max-w-2xl mx-auto">
           <span className="text-xs font-mono font-bold text-[#FA26A0] uppercase tracking-widest">
-            HISTÓRIAS DE USO & EXPERIÊNCIAS
+            CASOS DE USO & CENÁRIOS PRÁTICOS
           </span>
           <h2 className="text-3xl sm:text-4xl font-extrabold text-white font-display">
-            Feito para quem leva o Instagram a sério.
+            Onde o InstaScore gera o maior impacto.
           </h2>
           <p className="text-sm text-slate-300">
-            Veja como criadores, empreendedores e especialistas usam o InstaScore para obter clareza.
+            Veja como diferentes tipos de perfis utilizam o diagnóstico estrutural para identificar gargalos e acelerar decisões.
           </p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           
-          {/* USER 1 */}
+          {/* SCENARIO 1 */}
           <div className="glass-panel glass-panel-hover rounded-3xl p-6 space-y-4 border border-white/10 flex flex-col justify-between">
-            <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-[#FF5E36] to-[#E1306C] p-0.5 shrink-0 overflow-hidden shadow-md shadow-[#E1306C]/20">
-                  <img
-                    src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80"
-                    alt="Foto de perfil de Mariana Souza"
-                    className="w-full h-full object-cover rounded-full"
-                    referrerPolicy="no-referrer"
-                    loading="lazy"
-                  />
-                </div>
-                <div>
-                  <h3 className="font-bold text-white text-sm font-display">Mariana Souza</h3>
-                  <p className="text-xs text-[#FA26A0] font-mono font-medium">Criadora de Conteúdo</p>
-                </div>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="px-2.5 py-1 rounded-full bg-[#FF5E36]/15 border border-[#FF5E36]/30 text-[#FF5E36] text-[10px] font-mono font-bold">
+                  Cenário 1 • Serviços & Consultoria
+                </span>
+                <span className="text-[10px] font-mono text-slate-400">Exemplo</span>
               </div>
-              <p className="text-xs text-slate-300 leading-relaxed italic">
-                “Finalmente consegui entender por que meu perfil não estava convertendo os visitantes em seguidores. O diagnóstico mostrou exatamente onde o link estava falhando.”
-              </p>
+              
+              <div>
+                <h3 className="font-bold text-white text-base font-display">
+                  Destravar conversão de Direct
+                </h3>
+                <p className="text-xs text-[#FA26A0] font-mono font-medium mt-0.5">
+                  Problema: Posts regulares, mas quase zero leads qualificados
+                </p>
+              </div>
+
+              <div className="space-y-2 text-xs text-slate-300 bg-white/5 p-3.5 rounded-xl border border-white/5">
+                <p>
+                  <strong className="text-rose-400">Diagnóstico:</strong> Linktree com 7 links dispersos e bio sem proposta de valor específica para contratação.
+                </p>
+                <p>
+                  <strong className="text-emerald-400">Ajuste recomendado:</strong> Unificação em um único CTA direcionando para conversa diagnóstica no WhatsApp.
+                </p>
+              </div>
             </div>
-            <span className="text-[10px] text-slate-500 font-mono block pt-3 border-t border-white/5">
-              Experiência de uso real • Niche Fashion & Lifestyle
+
+            <span className="text-[10px] text-slate-400 font-mono block pt-3 border-t border-white/5">
+              Exemplo de aplicação demonstrativa • Consultores & Mentores
             </span>
           </div>
 
-          {/* USER 2 */}
+          {/* SCENARIO 2 */}
           <div className="glass-panel glass-panel-hover rounded-3xl p-6 space-y-4 border border-white/10 flex flex-col justify-between">
-            <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-[#38BDF8] to-[#833AB4] p-0.5 shrink-0 overflow-hidden shadow-md shadow-[#38BDF8]/20">
-                  <img
-                    src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80"
-                    alt="Foto de perfil de Lucas Mendes"
-                    className="w-full h-full object-cover rounded-full"
-                    referrerPolicy="no-referrer"
-                    loading="lazy"
-                  />
-                </div>
-                <div>
-                  <h3 className="font-bold text-white text-sm font-display">Lucas Mendes</h3>
-                  <p className="text-xs text-[#38BDF8] font-mono font-medium">Empreendedor Digital</p>
-                </div>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="px-2.5 py-1 rounded-full bg-[#38BDF8]/15 border border-[#38BDF8]/30 text-[#38BDF8] text-[10px] font-mono font-bold">
+                  Cenário 2 • Criadores & Infoprodutos
+                </span>
+                <span className="text-[10px] font-mono text-slate-400">Exemplo</span>
               </div>
-              <p className="text-xs text-slate-300 leading-relaxed italic">
-                “Eu sabia que precisava melhorar meu Instagram, mas não sabia por onde começar. Receber o plano de ação organizado por prioridades poupou semanas de erros.”
-              </p>
+
+              <div>
+                <h3 className="font-bold text-white text-base font-display">
+                  Retenção de visitantes de Reels
+                </h3>
+                <p className="text-xs text-[#38BDF8] font-mono font-medium mt-0.5">
+                  Problema: Vídeos viralizam, mas taxa de novos seguidores é baixa
+                </p>
+              </div>
+
+              <div className="space-y-2 text-xs text-slate-300 bg-white/5 p-3.5 rounded-xl border border-white/5">
+                <p>
+                  <strong className="text-rose-400">Diagnóstico:</strong> Ausência de ganchos de autoridade nos primeiros 4 destaques e nome sem termos de busca de nicho.
+                </p>
+                <p>
+                  <strong className="text-emerald-400">Ajuste recomendado:</strong> Reformulação dos destaques essenciais ("Comece Aqui" + "Depoimentos") e SEO do @handle.
+                </p>
+              </div>
             </div>
-            <span className="text-[10px] text-slate-500 font-mono block pt-3 border-t border-white/5">
-              Experiência de uso real • Niche B2B & Consultoria
+
+            <span className="text-[10px] text-slate-400 font-mono block pt-3 border-t border-white/5">
+              Exemplo de aplicação demonstrativa • Criadores de Conteúdo
             </span>
           </div>
 
-          {/* USER 3 */}
+          {/* SCENARIO 3 */}
           <div className="glass-panel glass-panel-hover rounded-3xl p-6 space-y-4 border border-white/10 flex flex-col justify-between">
-            <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-emerald-400 to-[#E1306C] p-0.5 shrink-0 overflow-hidden shadow-md shadow-emerald-400/20">
-                  <img
-                    src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80"
-                    alt="Foto de perfil de Camila Rocha"
-                    className="w-full h-full object-cover rounded-full"
-                    referrerPolicy="no-referrer"
-                    loading="lazy"
-                  />
-                </div>
-                <div>
-                  <h3 className="font-bold text-white text-sm font-display">Camila Rocha</h3>
-                  <p className="text-xs text-emerald-400 font-mono font-medium">Social Media Manager</p>
-                </div>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[10px] font-mono font-bold">
+                  Cenário 3 • Social Media & Agências
+                </span>
+                <span className="text-[10px] font-mono text-slate-400">Exemplo</span>
               </div>
-              <p className="text-xs text-slate-300 leading-relaxed italic">
-                “O mais útil foi receber uma ordem clara do que corrigir primeiro no perfil dos meus clientes. Uso o InstaScore para apresentar relatórios profissionais.”
-              </p>
+
+              <div>
+                <h3 className="font-bold text-white text-base font-display">
+                  Auditoria técnica para onboarding
+                </h3>
+                <p className="text-xs text-emerald-400 font-mono font-medium mt-0.5">
+                  Problema: Dificuldade de demonstrar prioridades de ajuste para clientes
+                </p>
+              </div>
+
+              <div className="space-y-2 text-xs text-slate-300 bg-white/5 p-3.5 rounded-xl border border-white/5">
+                <p>
+                  <strong className="text-rose-400">Diagnóstico:</strong> Relatórios anteriores eram muito conceituais e sem métricas objetivas de gaps de conversão.
+                </p>
+                <p>
+                  <strong className="text-emerald-400">Ajuste recomendado:</strong> Uso da matriz C.A.G.E. com plano priorizado de 7 dias na primeira semana do contrato.
+                </p>
+              </div>
             </div>
-            <span className="text-[10px] text-slate-500 font-mono block pt-3 border-t border-white/5">
-              Experiência de uso real • Niche Agência & Social Media
+
+            <span className="text-[10px] text-slate-400 font-mono block pt-3 border-t border-white/5">
+              Exemplo de aplicação demonstrativa • Gestores & Agências
             </span>
           </div>
 

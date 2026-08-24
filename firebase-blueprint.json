@@ -223,9 +223,50 @@
         "retentionUntil": { "type": "number" }
       },
       "required": ["key", "count", "resetAt", "updatedAt"]
+    },
+    "ContentProject": {
+      "title": "ContentProject",
+      "description": "InstaScore V12 Content Engine Project",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 200 },
+        "mode": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "retentionUntil": { "type": "number" }
+      },
+      "required": ["id", "userId", "title", "mode"]
+    },
+    "ContentItem": {
+      "title": "ContentItem",
+      "description": "InstaScore V12 Content Engine Generated Piece or Idea",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "projectId": { "type": "string", "maxLength": 128 },
+        "type": { "type": "string" },
+        "objective": { "type": "string" },
+        "status": { "type": "string" },
+        "title": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "retentionUntil": { "type": "number" }
+      },
+      "required": ["id", "userId", "type", "title", "status"]
     }
   },
   "firestore": {
+    "/content_projects/{projectId}": {
+      "schema": { "$ref": "#/entities/ContentProject" },
+      "description": "User Content Engine Projects"
+    },
+    "/content_items/{itemId}": {
+      "schema": { "$ref": "#/entities/ContentItem" },
+      "description": "User Content Engine Items and Generated Deliverables"
+    },
     "/diagnoses/{diagnosisId}": {
       "schema": { "$ref": "#/entities/Diagnosis" },
       "description": "Collection storing C.A.G.E. audits"

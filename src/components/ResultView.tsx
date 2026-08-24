@@ -36,6 +36,7 @@ interface ResultViewProps {
   onShare: () => void;
   activeTab?: DashboardSubTab;
   onTabChange?: (tab: DashboardSubTab) => void;
+  onNavigateToContentEngine?: (options?: any) => void;
 }
 
 export function ResultView({
@@ -49,6 +50,7 @@ export function ResultView({
   onShare,
   activeTab: propActiveTab,
   onTabChange,
+  onNavigateToContentEngine,
 }: ResultViewProps) {
   const { openPaywall, userId } = useEntitlements();
   const { scoring, diagnosis } = diagnosisResult;
@@ -295,7 +297,7 @@ export function ResultView({
             }`}
           >
             <Sparkles size={16} aria-hidden="true" className="shrink-0" />
-            <span>Content Lab (PRO)</span>
+            <span>Content Lab</span>
           </button>
 
           <button
@@ -343,6 +345,7 @@ export function ResultView({
                 initialDna={profileDna}
                 username={(handle || userName || 'usuario').replace('@', '')}
                 onOpenContentLab={() => handleSelectTab('content_lab')}
+                onOpenContentEngine={onNavigateToContentEngine}
                 onOpenPaywall={() => openPaywall()}
                 isPro={true}
               />

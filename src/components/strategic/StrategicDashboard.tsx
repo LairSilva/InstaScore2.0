@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Compass, 
   Target, 
@@ -21,6 +21,8 @@ import {
 } from 'lucide-react';
 import { ProfileDNA, ContentPillar, ProfileClarityScore } from '../../types/strategic-brain';
 import { ProfileDNAService } from '../../engine/strategic/ProfileDNAService';
+import { StrategyEngine } from '../../engine/intelligence/StrategyEngine';
+import { buildContentDNA } from '../../engine/content/ContentDNAEngine';
 import { BioStrategyModal } from './BioStrategyModal';
 import { NameStrategyModal } from './NameStrategyModal';
 import { apiFetch, ApiError } from '../../lib/api-client';
@@ -29,14 +31,17 @@ interface StrategicDashboardProps {
   initialDna?: ProfileDNA;
   username: string;
   onOpenContentLab?: () => void;
+  onOpenContentEngine?: (options?: { pillar?: string; gap?: string; format?: string; objective?: string; brief?: any }) => void;
   onOpenPaywall?: () => void;
   isPro?: boolean;
 }
+
 
 export const StrategicDashboard: React.FC<StrategicDashboardProps> = ({
   initialDna,
   username,
   onOpenContentLab,
+  onOpenContentEngine,
   onOpenPaywall,
   isPro = true
 }) => {
@@ -173,6 +178,27 @@ export const StrategicDashboard: React.FC<StrategicDashboardProps> = ({
     connection: dna.content_dna?.distribution?.connection ?? dna.content_distribution?.relacionamento ?? 20
   };
 
+  // V13 Strategy Engine: Compute Next Best Action & Content Brief
+  const calculatedContentDna = useMemo(() => {
+    return buildContentDNA({
+      profileDNA: dna,
+      handleOverride: username,
+      nicheOverride: dna.niche
+    });
+  }, [dna, username]);
+
+  const nextBestAction = useMemo(() => {
+    return StrategyEngine.determineNextBestAction({
+      dna: calculatedContentDna,
+      cageScores: {
+        conversion: clarityScore.differentiation_clarity || 50,
+        authority: clarityScore.authority_signals || 55,
+        growth: clarityScore.strategic_consistency || 68,
+        expression: clarityScore.content_alignment || 65
+      }
+    });
+  }, [calculatedContentDna, clarityScore]);
+
   const consultativeRationale = dna.content_dna?.consultative_rationale || 'Perfis de serviços e autoridade devem concentrar 40% em autoridade para validar o ticket e 25% em descoberta para atrair público qualificado constante.';
 
   return (
@@ -274,6 +300,92 @@ export const StrategicDashboard: React.FC<StrategicDashboardProps> = ({
             </button>
           </div>
         </div>
+
+        {/* ==================================================
+            COMMAND CENTER (CENTRAL DE COMANDO V13 INTELLIGENCE)
+            SCORE ATUAL → PRINCIPAL GARGALO → OPORTUNIDADE → PRÓXIMA AÇÃO → CRIAR AGORA
+            ================================================== */}
+        <div id="command-center-summary-card" className="bg-gradient-to-r from-[#111827] via-[#0f172a] to-[#131b2e] border-2 border-emerald-500/40 rounded-2xl p-5 sm:p-6 shadow-2xl relative overflow-hidden">
+          <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 relative z-10">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 flex-1 w-full">
+              
+              {/* 1. SCORE ATUAL */}
+              <div className="space-y-1">
+                <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">
+                  SCORE ATUAL
+                </span>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-3xl sm:text-4xl font-black text-white font-display">
+                    {clarityScore.overall_score}
+                  </span>
+                  <span className="text-sm font-mono text-slate-500">/ 100</span>
+                </div>
+              </div>
+
+              {/* 2. PRINCIPAL GARGALO */}
+              <div className="space-y-1">
+                <span className="text-[10px] font-mono font-bold text-rose-400 uppercase tracking-widest block flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" /> PRINCIPAL GARGALO
+                </span>
+                <div className="text-sm sm:text-base font-bold text-white leading-snug line-clamp-2">
+                  {nextBestAction.bottleneck || clarityScore.biggest_bottleneck || "AUTORIDADE"}
+                </div>
+              </div>
+
+              {/* 3. OPORTUNIDADE */}
+              <div className="space-y-1">
+                <span className="text-[10px] font-mono font-bold text-cyan-400 uppercase tracking-widest block flex items-center gap-1">
+                  <Target className="w-3 h-3" /> OPORTUNIDADE
+                </span>
+                <p className="text-xs text-slate-300 leading-relaxed line-clamp-2">
+                  {nextBestAction.opportunity || clarityScore.second_opportunity || "Reposicionar ganchos e aumentar retenção nos primeiros 3 segundos."}
+                </p>
+              </div>
+
+              {/* 4. PRÓXIMA AÇÃO (STRATEGY ENGINE NEXT BEST ACTION) */}
+              <div className="space-y-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-mono font-bold text-emerald-400 uppercase tracking-widest block flex items-center gap-1">
+                    <Zap className="w-3 h-3" /> PRÓXIMA AÇÃO (NBA)
+                  </span>
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">
+                    {nextBestAction.confidence}% conf.
+                  </span>
+                </div>
+                <p className="text-xs text-emerald-200 font-medium leading-relaxed line-clamp-2">
+                  {nextBestAction.brief?.theme || clarityScore.recommendation || "Criar um carrossel de autoridade para o microsegmento."}
+                </p>
+              </div>
+
+            </div>
+
+            {/* BOTÃO DE AÇÃO: CRIAR AGORA (USES CONTENT BRIEF) */}
+            <div className="shrink-0 w-full sm:w-auto">
+              <button
+                type="button"
+                id="btn_command_center_create_now"
+                onClick={() => {
+                  if (onOpenContentEngine) {
+                    onOpenContentEngine({
+                      pillar: nextBestAction.strategicPillar,
+                      gap: nextBestAction.bottleneck,
+                      format: nextBestAction.recommendedFormat,
+                      objective: nextBestAction.objective,
+                      brief: nextBestAction.brief
+                    });
+                  } else if (onOpenContentLab) {
+                    onOpenContentLab();
+                  }
+                }}
+                className="w-full sm:w-auto bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black py-3.5 px-6 rounded-xl text-xs sm:text-sm flex items-center justify-center gap-2 shadow-xl shadow-emerald-500/25 transition-all transform active:scale-95 cursor-pointer min-h-[44px]"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>CRIAR AGORA</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
 
         {/* 5-Step Above-the-Fold Diagnostic Core Flow */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">

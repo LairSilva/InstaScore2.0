@@ -14,8 +14,7 @@ import BrandSymbol, { BrandLogo } from "../components/BrandSymbol";
 import { useAccessibleModal } from "../hooks/useAccessibleModal";
 import {
   NAV_ITEMS,
-  STRATEGY_NAV_ITEMS,
-  OS_NAV_ITEMS,
+  NAV_AREAS,
   NavItemConfig,
   OsModuleId,
   DashboardSubTab
@@ -183,9 +182,13 @@ export function OSLayout({
               animate={{ x: 0 }}
               exit={{ x: "-100%" }}
               transition={{ type: "spring", stiffness: 320, damping: 32 }}
-              className="fixed inset-y-0 left-0 w-[85%] max-w-xs bg-[#080B14] border-r border-white/15 z-50 flex flex-col justify-between p-4 sm:p-5 md:hidden shadow-2xl overflow-y-auto focus:outline-none"
+              className="fixed inset-y-0 left-0 w-[85%] max-w-[320px] bg-[#080B14] border-r border-white/15 z-50 flex flex-col justify-between p-4 sm:p-5 md:hidden shadow-2xl overflow-y-auto focus:outline-none"
+              style={{
+                paddingTop: "max(1.25rem, env(safe-area-inset-top, 0px))",
+                paddingBottom: "max(1.25rem, env(safe-area-inset-bottom, 0px))"
+              }}
             >
-              <div className="space-y-5">
+              <div className="space-y-4">
                 {/* Drawer Header */}
                 <div className="flex items-center justify-between pb-3.5 border-b border-white/10">
                   <BrandLogo iconSize={30} textSize="sm" showTagline />
@@ -194,7 +197,7 @@ export function OSLayout({
                     id="btn-close-os-drawer"
                     onClick={() => setIsMobileMenuOpen(false)}
                     aria-label="Fechar menu"
-                    className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-white/10 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer shrink-0"
+                    className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-white/10 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer shrink-0 focus-visible:ring-2 focus-visible:ring-[#FA26A0]"
                   >
                     <X size={20} aria-hidden="true" />
                   </button>
@@ -205,13 +208,13 @@ export function OSLayout({
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#FF5E36] via-[#E1306C] to-[#833AB4] flex items-center justify-center font-black text-white shadow-[0_0_15px_rgba(225,48,108,0.35)] text-xs shrink-0 font-mono">
                     {score}
                   </div>
-                  <div className="overflow-hidden min-w-0">
-                    <h2 className="font-bold text-xs text-white truncate max-w-[140px] font-display">
+                  <div className="overflow-hidden min-w-0 flex-1">
+                    <h2 className="font-bold text-xs text-white truncate max-w-[160px] font-display">
                       {cleanHandle}
                     </h2>
                     <div className="flex items-center gap-1.5 mt-0.5">
                       <span className="text-[10px] text-[#FA26A0] font-mono font-semibold block">
-                        InstaScore OS v6
+                        InstaScore OS v12
                       </span>
                       {isPro && (
                         <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-mono font-bold">
@@ -222,83 +225,62 @@ export function OSLayout({
                   </div>
                 </div>
 
-                {/* Mobile Section 1: Estratégia & Diagnóstico */}
-                <nav className="space-y-1" aria-label="Estratégia e Diagnóstico">
-                  <h3 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-2 px-3 font-mono">
-                    ESTRATÉGIA & DIAGNÓSTICO
-                  </h3>
-                  {STRATEGY_NAV_ITEMS.map((item) => {
-                    const active = isItemActive(item);
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        id={`mobile-nav-${item.id}`}
-                        onClick={() => handleSelectItem(item)}
-                        aria-label={item.ariaLabel}
-                        aria-current={active ? "page" : undefined}
-                        className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs transition-all cursor-pointer min-h-[44px] ${
-                          active 
-                            ? "bg-gradient-to-r from-[#FF5E36]/20 via-[#E1306C]/20 to-[#833AB4]/20 text-white font-bold border-l-4 border-l-[#FA26A0] border-y border-r border-[#E1306C]/40 shadow-[0_0_20px_rgba(225,48,108,0.2)]" 
-                            : "text-slate-400 hover:text-white hover:bg-white/5 font-medium border border-transparent"
-                        }`}
-                      >
-                        <span className={active ? "text-[#FF5E36]" : "text-slate-500"}>
-                          <NavIcon id={item.id} size={18} />
-                        </span>
-                        <span className="truncate">{item.label}</span>
-                        {active ? (
-                          <span className="ml-auto text-[9px] uppercase font-mono font-extrabold px-1.5 py-0.5 rounded bg-[#FA26A0]/20 text-[#FA26A0] border border-[#FA26A0]/30 shrink-0">
-                            Ativo
-                          </span>
-                        ) : item.isPro ? (
-                          <span className="ml-auto text-[9px] uppercase font-mono font-bold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0">
-                            PRO
-                          </span>
-                        ) : null}
-                      </button>
-                    );
-                  })}
-                </nav>
-
-                {/* Mobile Section 2: Sistema Operacional */}
-                <nav className="space-y-1" aria-label="Módulos do Sistema Operacional">
-                  <h3 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-2 px-3 font-mono">
-                    SISTEMA OPERACIONAL
-                  </h3>
-                  {OS_NAV_ITEMS.map((item) => {
-                    const active = isItemActive(item);
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        id={`mobile-nav-${item.id}`}
-                        onClick={() => handleSelectItem(item)}
-                        aria-label={item.ariaLabel}
-                        aria-current={active ? "page" : undefined}
-                        className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs transition-all cursor-pointer min-h-[44px] ${
-                          active 
-                            ? "bg-gradient-to-r from-[#FF5E36]/20 via-[#E1306C]/20 to-[#833AB4]/20 text-white font-bold border-l-4 border-l-[#FA26A0] border-y border-r border-[#E1306C]/40 shadow-[0_0_20px_rgba(225,48,108,0.2)]" 
-                            : "text-slate-400 hover:text-white hover:bg-white/5 font-medium border border-transparent"
-                        }`}
-                      >
-                        <span className={active ? "text-[#FF5E36]" : "text-slate-500"}>
-                          <NavIcon id={item.id} size={18} />
-                        </span>
-                        <span className="truncate">{item.label}</span>
-                        {active && (
-                          <span className="ml-auto text-[9px] uppercase font-mono font-extrabold px-1.5 py-0.5 rounded bg-[#FA26A0]/20 text-[#FA26A0] border border-[#FA26A0]/30 shrink-0">
-                            Ativo
+                {/* Mobile 4 Areas Navigation */}
+                <div className="space-y-4">
+                  {NAV_AREAS.map((area) => (
+                    <nav key={area.id} className="space-y-1" aria-label={area.title}>
+                      <div className="flex items-center justify-between px-2.5 mb-1.5">
+                        <h3 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">
+                          {area.title}
+                        </h3>
+                        {area.badge && (
+                          <span className="text-[9px] font-mono font-black px-1.5 py-0.2 rounded bg-gradient-to-r from-[#FF5E36] to-[#FA26A0] text-white">
+                            {area.badge}
                           </span>
                         )}
-                      </button>
-                    );
-                  })}
-                </nav>
+                      </div>
+
+                      {area.items.map((item) => {
+                        const active = isItemActive(item);
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            id={`mobile-nav-${item.id}`}
+                            onClick={() => handleSelectItem(item)}
+                            aria-label={item.ariaLabel}
+                            aria-current={active ? "page" : undefined}
+                            className={`w-full flex items-center justify-between gap-2.5 px-3 py-2.5 rounded-xl text-xs transition-all cursor-pointer min-h-[44px] text-left group relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FA26A0] focus-visible:ring-offset-2 focus-visible:ring-offset-[#080B14] ${
+                              active 
+                                ? "bg-gradient-to-r from-[#FF5E36]/20 via-[#E1306C]/20 to-[#833AB4]/20 text-white font-bold border-l-4 border-l-[#FA26A0] border-y border-r border-[#E1306C]/40 shadow-[0_0_20px_rgba(225,48,108,0.2)]" 
+                                : "text-slate-400 hover:text-white hover:bg-white/5 font-medium border border-transparent"
+                            }`}
+                          >
+                            <span className={`shrink-0 flex items-center justify-center w-5 h-5 ${active ? "text-[#FF5E36]" : "text-slate-500 group-hover:text-slate-300"}`}>
+                              <NavIcon id={item.id} size={17} />
+                            </span>
+                            <span className="flex-1 min-w-0 text-left font-medium leading-tight select-none">
+                              {item.label}
+                            </span>
+                            {active ? (
+                              <span className="shrink-0 ml-1.5 text-[9px] uppercase font-mono font-extrabold px-1.5 py-0.5 rounded bg-[#FA26A0]/20 text-[#FA26A0] border border-[#FA26A0]/30">
+                                Ativo
+                              </span>
+                            ) : item.isPro ? (
+                              <span className="shrink-0 ml-1.5 text-[9px] uppercase font-mono font-bold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                PRO
+                              </span>
+                            ) : null}
+                          </button>
+                        );
+                      })}
+                    </nav>
+                  ))}
+                </div>
               </div>
 
               {/* Mobile Drawer Footer Actions */}
-              <div className="pt-4 mt-6 border-t border-white/10 space-y-1.5">
+              <div className="pt-4 mt-4 border-t border-white/10 space-y-1.5">
                 {onOpenPrivacy && (
                   <button
                     type="button"
@@ -308,7 +290,7 @@ export function OSLayout({
                       onOpenPrivacy();
                     }}
                     aria-label="Abrir privacidade e retenção de dados"
-                    className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-indigo-400 hover:bg-indigo-500/10 transition-colors cursor-pointer min-h-[44px]"
+                    className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-indigo-400 hover:bg-indigo-500/10 transition-colors cursor-pointer min-h-[44px] focus-visible:ring-2 focus-visible:ring-indigo-400"
                   >
                     <ShieldCheck size={16} className="text-indigo-400 shrink-0" aria-hidden="true" />
                     <span>Privacidade e Dados</span>
@@ -322,7 +304,7 @@ export function OSLayout({
                     onLogout();
                   }}
                   aria-label="Sair do Sistema Operacional e redefinir diagnóstico"
-                  className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer min-h-[44px]"
+                  className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer min-h-[44px] focus-visible:ring-2 focus-visible:ring-rose-400"
                 >
                   <LogOut size={16} className="shrink-0" aria-hidden="true" />
                   <span>Sair</span>
@@ -336,13 +318,13 @@ export function OSLayout({
       {/* Desktop Sidebar Navigation (Preserved on Desktop and Tablet) */}
       <aside 
         id="os-desktop-sidebar"
-        className="hidden md:flex w-64 glass-panel border-r border-white/10 flex-col justify-between shrink-0 h-screen sticky top-0 z-30 backdrop-blur-2xl"
+        className="hidden md:flex w-[276px] lg:w-[288px] xl:w-[300px] glass-panel border-r border-white/10 flex-col justify-between shrink-0 h-screen sticky top-0 z-30 backdrop-blur-2xl"
       >
-        <div className="p-4 sm:p-5 space-y-5 overflow-y-auto">
+        <div className="p-3.5 sm:p-4 space-y-4.5 overflow-y-auto min-h-0 flex-1">
           
           {/* Brand Logo Header */}
-          <div className="pb-4 border-b border-white/10">
-            <BrandLogo iconSize={36} textSize="md" showTagline />
+          <div className="pb-3.5 border-b border-white/10">
+            <BrandLogo iconSize={34} textSize="md" showTagline />
           </div>
 
           {/* User Mini Profile */}
@@ -350,12 +332,12 @@ export function OSLayout({
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#FF5E36] via-[#E1306C] to-[#833AB4] flex items-center justify-center font-black text-white shadow-[0_0_15px_rgba(225,48,108,0.35)] text-sm shrink-0 font-mono">
               {score}
             </div>
-            <div className="overflow-hidden min-w-0">
-              <h2 className="font-bold text-xs text-white truncate max-w-[130px] font-display">
+            <div className="overflow-hidden min-w-0 flex-1">
+              <h2 className="font-bold text-xs text-white truncate max-w-[150px] font-display">
                 {cleanHandle}
               </h2>
               <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="text-[10px] text-[#FA26A0] font-mono font-semibold">InstaScore OS v6</span>
+                <span className="text-[10px] text-[#FA26A0] font-mono font-semibold">InstaScore OS v12</span>
                 {isPro && (
                   <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-mono font-bold">
                     PRO
@@ -365,90 +347,69 @@ export function OSLayout({
             </div>
           </div>
 
-          {/* Desktop Section 1: Estratégia & Diagnóstico */}
-          <nav className="space-y-1" aria-label="Estratégia e Diagnóstico">
-            <h3 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-2 px-3 font-mono">
-              ESTRATÉGIA & DIAGNÓSTICO
-            </h3>
-            {STRATEGY_NAV_ITEMS.map((item) => {
-              const active = isItemActive(item);
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  id={`desktop-nav-${item.id}`}
-                  onClick={() => onNavigate(item.module, item.subTab)}
-                  aria-label={item.ariaLabel}
-                  aria-current={active ? "page" : undefined}
-                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs transition-all cursor-pointer min-h-[44px] ${
-                    active 
-                      ? "bg-gradient-to-r from-[#FF5E36]/20 via-[#E1306C]/20 to-[#833AB4]/20 text-white font-bold border-l-4 border-l-[#FA26A0] border-y border-r border-[#E1306C]/40 shadow-[0_0_20px_rgba(225,48,108,0.2)]" 
-                      : "text-slate-400 hover:text-white hover:bg-white/5 font-medium border border-transparent"
-                  }`}
-                >
-                  <span className={active ? "text-[#FF5E36]" : "text-slate-500"}>
-                    <NavIcon id={item.id} size={18} />
-                  </span>
-                  <span className="truncate">{item.label}</span>
-                  {active ? (
-                    <span className="ml-auto text-[9px] uppercase font-mono font-extrabold px-1.5 py-0.5 rounded bg-[#FA26A0]/20 text-[#FA26A0] border border-[#FA26A0]/30 shrink-0">
-                      Ativo
-                    </span>
-                  ) : item.isPro ? (
-                    <span className="ml-auto text-[9px] uppercase font-mono font-bold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0">
-                      PRO
-                    </span>
-                  ) : null}
-                </button>
-              );
-            })}
-          </nav>
-
-          {/* Desktop Section 2: Sistema Operacional */}
-          <nav className="space-y-1" aria-label="Módulos do Sistema Operacional">
-            <h3 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-2 px-3 font-mono">
-              SISTEMA OPERACIONAL
-            </h3>
-            {OS_NAV_ITEMS.map((item) => {
-              const active = isItemActive(item);
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  id={`desktop-nav-${item.id}`}
-                  onClick={() => onNavigate(item.module, item.subTab)}
-                  aria-label={item.ariaLabel}
-                  aria-current={active ? "page" : undefined}
-                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs transition-all cursor-pointer min-h-[44px] ${
-                    active 
-                      ? "bg-gradient-to-r from-[#FF5E36]/20 via-[#E1306C]/20 to-[#833AB4]/20 text-white font-bold border-l-4 border-l-[#FA26A0] border-y border-r border-[#E1306C]/40 shadow-[0_0_20px_rgba(225,48,108,0.2)]" 
-                      : "text-slate-400 hover:text-white hover:bg-white/5 font-medium border border-transparent"
-                  }`}
-                >
-                  <span className={active ? "text-[#FF5E36]" : "text-slate-500"}>
-                    <NavIcon id={item.id} size={18} />
-                  </span>
-                  <span className="truncate">{item.label}</span>
-                  {active && (
-                    <span className="ml-auto text-[9px] uppercase font-mono font-extrabold px-1.5 py-0.5 rounded bg-[#FA26A0]/20 text-[#FA26A0] border border-[#FA26A0]/30 shrink-0">
-                      Ativo
+          {/* Desktop 4 Areas Navigation */}
+          <div className="space-y-4">
+            {NAV_AREAS.map((area) => (
+              <nav key={area.id} className="space-y-1" aria-label={area.title}>
+                <div className="flex items-center justify-between px-2.5 mb-1.5">
+                  <h3 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">
+                    {area.title}
+                  </h3>
+                  {area.badge && (
+                    <span className="text-[9px] font-mono font-black px-1.5 py-0.2 rounded bg-gradient-to-r from-[#FF5E36] to-[#FA26A0] text-white">
+                      {area.badge}
                     </span>
                   )}
-                </button>
-              );
-            })}
-          </nav>
+                </div>
+
+                {area.items.map((item) => {
+                  const active = isItemActive(item);
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      id={`desktop-nav-${item.id}`}
+                      onClick={() => onNavigate(item.module, item.subTab)}
+                      aria-label={item.ariaLabel}
+                      aria-current={active ? "page" : undefined}
+                      className={`w-full flex items-center justify-between gap-2.5 px-3 py-2.5 rounded-xl text-xs transition-all cursor-pointer min-h-[44px] text-left group relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FA26A0] focus-visible:ring-offset-2 focus-visible:ring-offset-[#080B14] ${
+                        active 
+                          ? "bg-gradient-to-r from-[#FF5E36]/20 via-[#E1306C]/20 to-[#833AB4]/20 text-white font-bold border-l-4 border-l-[#FA26A0] border-y border-r border-[#E1306C]/40 shadow-[0_0_20px_rgba(225,48,108,0.2)]" 
+                          : "text-slate-400 hover:text-white hover:bg-white/5 font-medium border border-transparent"
+                      }`}
+                    >
+                      <span className={`shrink-0 flex items-center justify-center w-5 h-5 ${active ? "text-[#FF5E36]" : "text-slate-500 group-hover:text-slate-300"}`}>
+                        <NavIcon id={item.id} size={17} />
+                      </span>
+                      <span className="flex-1 min-w-0 text-left font-medium leading-tight select-none">
+                        {item.label}
+                      </span>
+                      {active ? (
+                        <span className="shrink-0 ml-1.5 text-[9px] uppercase font-mono font-extrabold px-1.5 py-0.5 rounded bg-[#FA26A0]/20 text-[#FA26A0] border border-[#FA26A0]/30">
+                          Ativo
+                        </span>
+                      ) : item.isPro ? (
+                        <span className="shrink-0 ml-1.5 text-[9px] uppercase font-mono font-bold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                          PRO
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </nav>
+            ))}
+          </div>
         </div>
 
         {/* Desktop Footer Actions */}
-        <div className="p-4 sm:p-5 border-t border-white/10 space-y-1.5">
+        <div className="p-3.5 sm:p-4 border-t border-white/10 space-y-1.5">
           {onOpenPlan && (
             <button
               type="button"
               id="btn-desktop-plan"
               onClick={onOpenPlan}
               aria-label={isPro ? "Gerenciar Assinatura Pro" : "Ver opções de Planos"}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold text-amber-300 bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20 transition-colors cursor-pointer min-h-[44px]"
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold text-amber-300 bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20 transition-colors cursor-pointer min-h-[44px] focus-visible:ring-2 focus-visible:ring-amber-400"
             >
               <Crown size={16} className="text-amber-400 shrink-0" aria-hidden="true" />
               <span>{isPro ? "Plano Pro Ativo" : "Ver Planos & Upgrade"}</span>
@@ -460,7 +421,7 @@ export function OSLayout({
               id="btn-desktop-privacy"
               onClick={onOpenPrivacy}
               aria-label="Abrir configurações de privacidade e dados"
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-indigo-400 hover:bg-indigo-500/10 transition-colors cursor-pointer min-h-[44px]"
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-indigo-400 hover:bg-indigo-500/10 transition-colors cursor-pointer min-h-[44px] focus-visible:ring-2 focus-visible:ring-indigo-400"
             >
               <ShieldCheck size={16} className="text-indigo-400 shrink-0" aria-hidden="true" />
               <span>Privacidade e Dados</span>
@@ -471,7 +432,7 @@ export function OSLayout({
             id="btn-desktop-logout"
             onClick={onLogout}
             aria-label="Sair do Sistema Operacional e redefinir diagnóstico"
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer min-h-[44px]"
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer min-h-[44px] focus-visible:ring-2 focus-visible:ring-rose-400"
           >
             <LogOut size={16} className="shrink-0" aria-hidden="true" />
             <span>Sair do OS</span>

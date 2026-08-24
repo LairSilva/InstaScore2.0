@@ -1,6 +1,6 @@
 {
   "name": "InstaScore.ai",
-  "description": "AI consultant providing structural Instagram audits, performance scores, and strategic action plans through multimodal screenshot analysis.",
+  "description": "AI Operating System providing structural Instagram audits, C.A.G.E. scoring, Strategic Content Engine, AI Ideator, Campaign Blueprinting, and intelligent digital twin growth tracking.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

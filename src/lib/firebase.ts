@@ -25,14 +25,24 @@ export async function getOrEnsureAuthUser(): Promise<User | null> {
       }
     });
 
-    // Grace period for session resolution
-    setTimeout(() => {
+    // Grace period for session resolution, fallback to anonymous sign-in if needed
+    setTimeout(async () => {
       if (!settled) {
         settled = true;
         unsubscribe();
-        resolve(auth.currentUser || null);
+        if (auth.currentUser) {
+          resolve(auth.currentUser);
+        } else {
+          try {
+            const anonCred = await signInAnonymously(auth);
+            resolve(anonCred.user);
+          } catch (e) {
+            console.warn('[Firebase Auth] Anonymous sign-in fallback note:', e);
+            resolve(null);
+          }
+        }
       }
-    }, 350);
+    }, 400);
   });
 }
 
@@ -50,6 +60,14 @@ export async function getAuthIdToken(forceRefresh: boolean = false): Promise<str
   let user = auth.currentUser;
   if (!user) {
     user = await getOrEnsureAuthUser();
+  }
+  if (!user) {
+    try {
+      const anonCred = await signInAnonymously(auth);
+      user = anonCred.user;
+    } catch (e) {
+      console.warn('[Firebase Auth] Immediate anonymous sign-in attempt failed:', e);
+    }
   }
   if (!user) {
     throw new Error("Usuário não autenticado no Firebase. Por favor, conecte-se com o Google para continuar.");

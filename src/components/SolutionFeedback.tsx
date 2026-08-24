@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ThumbsUp, ThumbsDown, Check, MessageSquare } from 'lucide-react';
+import { apiFetch } from '../lib/api-client';
 
 interface SolutionFeedbackProps {
   solutionType: string;
@@ -34,9 +35,8 @@ export const SolutionFeedback: React.FC<SolutionFeedbackProps> = ({
   const sendFeedback = async (voteRating: 'useful' | 'not_useful', userComment: string) => {
     setIsSubmitting(true);
     try {
-      await fetch('/api/feedback/submit', {
+      await apiFetch('/api/feedback/submit', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId,
           solutionType,

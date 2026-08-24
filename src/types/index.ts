@@ -49,3 +49,5 @@ export interface FeedbackData {
   wouldPay?: string;
   createdAt: string;
 }
+
+export * from "./intelligence";

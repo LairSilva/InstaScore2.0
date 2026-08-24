@@ -30,6 +30,9 @@ import {
 import { PLANS, getPlanConfig } from "./src/config/plans";
 import { MissionService } from "./src/engine/missions/MissionService";
 import { StrategicBrainServer } from "./src/engine/strategic/StrategicBrainServer";
+import { buildContentDNA } from "./src/engine/content/ContentDNAEngine";
+import { ContentEngineServer } from "./src/engine/content/ContentEngineServer";
+import { recordContentInMemory } from "./src/engine/content/ContentMemoryEngine";
 import { cleanAndParseJson, handleAiError } from "./src/lib/gemini-parser";
 import { 
   requireAuth, 
@@ -906,37 +909,6 @@ app.get("/api/admin/metrics", requireAdmin, async (req, res) => {
   });
 });
 
-// 9.1 User Feedback Submission Endpoint (Protected: Authenticated User)
-app.post("/api/feedback/submit", requireAuth, async (req, res) => {
-  try {
-    const userId = req.user!.uid;
-    const { solutionType, rating, comment, itemTitle } = req.body;
-    if (!solutionType || !rating) {
-      return res.status(400).json({ success: false, error: "solutionType and rating are required." });
-    }
-    const record = await submitUserFeedback({
-      userId,
-      solutionType,
-      rating: rating === "useful" ? "useful" : "not_useful",
-      comment,
-      itemTitle
-    });
-    return res.json({ success: true, feedback: record });
-  } catch (err: any) {
-    return res.status(500).json({ success: false, error: "FEEDBACK_SUBMIT_FAILED", message: err.message });
-  }
-});
-
-// 9.2 Admin Feedback Listing Endpoint (Protected: Admin Only)
-app.get("/api/feedback/list", requireAdmin, async (req, res) => {
-  try {
-    const records = await listFeedbackRecords();
-    return res.json({ success: true, feedback: records });
-  } catch (err: any) {
-    return res.status(500).json({ success: false, error: "FEEDBACK_LIST_FAILED", message: err.message });
-  }
-});
-
 /**
  * -------------------------------------------------------------
  * INSTASCORE PRO RESOLUTION ENGINE (V13 FULL PRO RESOLUTION SUITE)
@@ -1688,6 +1660,326 @@ app.post("/api/strategic/content-lab", requireAuth, async (req, res) => {
     const aiErr = handleAiError(err);
     return res.status(aiErr.status).json({ success: false, error: { code: aiErr.code, message: aiErr.message } });
   }
+});
+
+/**
+ * -------------------------------------------------------------
+ * INSTASCORE CONTENT ENGINE V12 API SUITE
+ * -------------------------------------------------------------
+ */
+
+const contentEngineServer = new ContentEngineServer(async (params) => {
+  const result = await callGeminiWithRobustFallback({
+    contents: params.contents,
+    config: params.config
+  });
+  return { text: result.text, modelUsed: result.modelUsed };
+});
+
+// In-memory cache for user content memory (persisted across user session)
+const userContentMemories = new Map<string, any>();
+
+// 12.1 Content DNA Extraction / Aggregation
+app.post("/api/content/dna", requireAuth, async (req, res) => {
+  try {
+    const { diagnosisResult, startModeResult, profileDNA, digitalTwin, customGoal, nicheOverride, handleOverride } = req.body;
+    const dna = buildContentDNA({
+      diagnosisResult,
+      startModeResult,
+      profileDNA,
+      digitalTwin,
+      customGoal,
+      nicheOverride,
+      handleOverride
+    });
+    return res.json({ success: true, dna });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: "CONTENT_DNA_FAILED", message: err.message });
+  }
+});
+
+// 12.2 Generate Ideas (Criar Agora & Resolver um Problema)
+app.post("/api/content/generate-idea", requireAuth, async (req, res) => {
+  const userId = req.user!.uid;
+
+  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION");
+  if (!quota.allowed) {
+    return res.status(429).json({ success: false, error: quota.errorCode, message: quota.message });
+  }
+
+  const { dna, format, objective, problemId, problemDescription, themeCustom } = req.body;
+
+  try {
+    const startTime = Date.now();
+    const memory = userContentMemories.get(userId) || {
+      userId,
+      usedThemes: [],
+      usedHooks: [],
+      usedCtas: [],
+      pillarDistribution: { conversion: 0, authority: 0, growth: 0, expression: 0 },
+      fingerprints: [],
+      lastUpdated: new Date().toISOString()
+    };
+
+    const result = await contentEngineServer.generateIdeas({
+      dna,
+      format,
+      objective,
+      problemId,
+      problemDescription,
+      themeCustom,
+      memory
+    });
+
+    const durationMs = Date.now() - startTime;
+    logAiExecutionCost({
+      userId,
+      action: "content_engine_ideator",
+      modelUsed: AI_MODEL_ROUTER.primaryModel,
+      durationMs,
+      retries: 0,
+      fallbackUsed: false,
+      inputTokens: 750,
+      outputTokens: 900
+    });
+
+    return res.json({
+      success: true,
+      ideas: result.ideas,
+      strategicRationale: result.strategicRationale,
+      primaryFocusPillar: result.primaryFocusPillar,
+      quotaUsed: quota.currentCount,
+      quotaMax: quota.maxLimit
+    });
+  } catch (err: any) {
+    console.error("[Content Engine Ideator Error]", err);
+    const aiErr = handleAiError(err);
+    return res.status(aiErr.status).json({ success: false, error: { code: aiErr.code, message: aiErr.message } });
+  }
+});
+
+// 12.3 Generate Full Content (Post, Carousel, Reel, Story) with Quality Gate
+app.post("/api/content/generate-full", requireAuth, async (req, res) => {
+  const userId = req.user!.uid;
+
+  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION");
+  if (!quota.allowed) {
+    return res.status(429).json({ success: false, error: quota.errorCode, message: quota.message });
+  }
+
+  const { dna, idea, format } = req.body;
+  if (!dna || !idea || !format) {
+    return res.status(400).json({ success: false, error: "INVALID_PARAMS", message: "dna, idea e format são obrigatórios." });
+  }
+
+  try {
+    const startTime = Date.now();
+    let memory = userContentMemories.get(userId) || {
+      userId,
+      usedThemes: [],
+      usedHooks: [],
+      usedCtas: [],
+      pillarDistribution: { conversion: 0, authority: 0, growth: 0, expression: 0 },
+      fingerprints: [],
+      lastUpdated: new Date().toISOString()
+    };
+
+    const result = await contentEngineServer.generateFullContent({
+      dna,
+      idea,
+      format,
+      memory
+    });
+
+    // Update memory
+    memory = recordContentInMemory(
+      memory,
+      idea.title,
+      idea.hook,
+      idea.cta || "Direct",
+      idea.cagePillar || "authority"
+    );
+    userContentMemories.set(userId, memory);
+
+    const durationMs = Date.now() - startTime;
+    logAiExecutionCost({
+      userId,
+      action: "content_engine_creator",
+      modelUsed: AI_MODEL_ROUTER.primaryModel,
+      durationMs,
+      retries: 0,
+      fallbackUsed: false,
+      inputTokens: 950,
+      outputTokens: 1400
+    });
+
+    return res.json({
+      success: true,
+      content: result.content,
+      quality: result.quality,
+      quotaUsed: quota.currentCount,
+      quotaMax: quota.maxLimit
+    });
+  } catch (err: any) {
+    console.error("[Content Engine Creator Error]", err);
+    const aiErr = handleAiError(err);
+    return res.status(aiErr.status).json({ success: false, error: { code: aiErr.code, message: aiErr.message } });
+  }
+});
+
+// 12.4 Plan Calendar (7, 15, 30 days) - PRO Entitlement
+app.post("/api/content/plan-calendar", requireAuth, async (req, res) => {
+  const userId = req.user!.uid;
+
+  const entitlement = await checkUserEntitlement(userId, "calendar_generation");
+  if (!entitlement.allowed) {
+    return res.status(403).json({
+      success: false,
+      error: "PAYWALL_REQUIRED",
+      message: entitlement.reason || "O Planejador Editorial Completo é exclusivo do plano InstaScore PRO.",
+      paywallRequired: true
+    });
+  }
+
+  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION");
+  if (!quota.allowed) {
+    return res.status(429).json({ success: false, error: quota.errorCode, message: quota.message });
+  }
+
+  const { dna, daysCount, frequencyPerWeek, primaryGoal, preferredFormats } = req.body;
+
+  try {
+    const startTime = Date.now();
+    const plan = await contentEngineServer.planCalendar({
+      dna,
+      daysCount: daysCount || 15,
+      frequencyPerWeek: frequencyPerWeek || 5,
+      primaryGoal: primaryGoal || "Crescimento e Conversão",
+      preferredFormats
+    });
+
+    const durationMs = Date.now() - startTime;
+    logAiExecutionCost({
+      userId,
+      action: "content_engine_calendar",
+      modelUsed: AI_MODEL_ROUTER.primaryModel,
+      durationMs,
+      retries: 0,
+      fallbackUsed: false,
+      inputTokens: 850,
+      outputTokens: 1200
+    });
+
+    return res.json({
+      success: true,
+      plan,
+      quotaUsed: quota.currentCount,
+      quotaMax: quota.maxLimit
+    });
+  } catch (err: any) {
+    console.error("[Content Engine Calendar Error]", err);
+    const aiErr = handleAiError(err);
+    return res.status(aiErr.status).json({ success: false, error: { code: aiErr.code, message: aiErr.message } });
+  }
+});
+
+// 12.5 Create Campaign (6 Phases) - PRO Entitlement
+app.post("/api/content/create-campaign", requireAuth, async (req, res) => {
+  const userId = req.user!.uid;
+
+  const entitlement = await checkUserEntitlement(userId, "contentAi");
+  if (!entitlement.allowed) {
+    return res.status(403).json({
+      success: false,
+      error: "PAYWALL_REQUIRED",
+      message: entitlement.reason || "O Campaign Builder em 6 Fases é exclusivo do plano InstaScore PRO.",
+      paywallRequired: true
+    });
+  }
+
+  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION");
+  if (!quota.allowed) {
+    return res.status(429).json({ success: false, error: quota.errorCode, message: quota.message });
+  }
+
+  const { dna, campaignType, productOrServiceName, targetAudience, primaryObjective, durationDays } = req.body;
+
+  try {
+    const startTime = Date.now();
+    const campaign = await contentEngineServer.createCampaign({
+      dna,
+      campaignType: campaignType || "product_launch",
+      productOrServiceName: productOrServiceName || "Oferta Principal",
+      targetAudience,
+      primaryObjective,
+      durationDays: durationDays || 18
+    });
+
+    const durationMs = Date.now() - startTime;
+    logAiExecutionCost({
+      userId,
+      action: "content_engine_campaign",
+      modelUsed: AI_MODEL_ROUTER.primaryModel,
+      durationMs,
+      retries: 0,
+      fallbackUsed: false,
+      inputTokens: 900,
+      outputTokens: 1600
+    });
+
+    return res.json({
+      success: true,
+      campaign,
+      quotaUsed: quota.currentCount,
+      quotaMax: quota.maxLimit
+    });
+  } catch (err: any) {
+    console.error("[Content Engine Campaign Error]", err);
+    const aiErr = handleAiError(err);
+    return res.status(aiErr.status).json({ success: false, error: { code: aiErr.code, message: aiErr.message } });
+  }
+});
+
+// In-memory fallback library cache for development / offline resilience
+const userContentLibraries = new Map<string, any[]>();
+
+// 12.6 Content Library Listing
+app.get("/api/content/library", requireAuth, async (req, res) => {
+  const userId = req.user!.uid;
+  const items = userContentLibraries.get(userId) || [];
+  return res.json({ success: true, items });
+});
+
+// 12.7 Content Library Save / Update Item
+app.post("/api/content/library/save", requireAuth, async (req, res) => {
+  const userId = req.user!.uid;
+  const { item } = req.body;
+  if (!item || !item.id) {
+    return res.status(400).json({ success: false, error: "INVALID_ITEM", message: "item e item.id são obrigatórios." });
+  }
+
+  const existing = userContentLibraries.get(userId) || [];
+  const index = existing.findIndex(i => i.id === item.id);
+  if (index >= 0) {
+    existing[index] = { ...existing[index], ...item, updatedAt: new Date().toISOString() };
+  } else {
+    existing.unshift({ ...item, userId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+  }
+  userContentLibraries.set(userId, existing);
+
+  return res.json({ success: true, item, total: existing.length });
+});
+
+// 12.8 Content Library Delete Item
+app.delete("/api/content/library/:id", requireAuth, async (req, res) => {
+  const userId = req.user!.uid;
+  const itemId = req.params.id;
+
+  const existing = userContentLibraries.get(userId) || [];
+  const filtered = existing.filter(i => i.id !== itemId);
+  userContentLibraries.set(userId, filtered);
+
+  return res.json({ success: true, deletedId: itemId, total: filtered.length });
 });
 
 /**

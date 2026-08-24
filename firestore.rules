@@ -135,6 +135,26 @@ service cloud.firestore {
     }
 
     // ------------------------------------------------------------------------
+    // 6.1 Content Projects (InstaScore Content Engine Projects)
+    // ------------------------------------------------------------------------
+    match /content_projects/{projectId} {
+      allow read: if isValidId(projectId) && isSignedIn() && isOwner();
+      allow create: if isValidId(projectId) && isSignedIn() && incoming().userId == request.auth.uid;
+      allow update: if isValidId(projectId) && isSignedIn() && canUserClaimOrUpdate() && incoming().userId == request.auth.uid;
+      allow delete: if isValidId(projectId) && isOwner();
+    }
+
+    // ------------------------------------------------------------------------
+    // 6.2 Content Items (InstaScore Content Engine Deliverables and Ideas)
+    // ------------------------------------------------------------------------
+    match /content_items/{itemId} {
+      allow read: if isValidId(itemId) && isSignedIn() && isOwner();
+      allow create: if isValidId(itemId) && isSignedIn() && incoming().userId == request.auth.uid;
+      allow update: if isValidId(itemId) && isSignedIn() && canUserClaimOrUpdate() && incoming().userId == request.auth.uid;
+      allow delete: if isValidId(itemId) && isOwner();
+    }
+
+    // ------------------------------------------------------------------------
     // 7. Subscriptions (Server-Managed Billing State)
     // Client can ONLY read their own subscription state.
     // Client-side write/mutations (plan, status, provider, etc.) are strictly FORBIDDEN.

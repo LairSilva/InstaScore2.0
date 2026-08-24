@@ -29,6 +29,8 @@ import { runPaywallModalComponentTests } from "./components/paywall-modal.test";
 import { runModalA11yComponentTests } from "./components/modal-a11y.test";
 import { runNavigationDrawerTests } from "./components/navigation-drawer.test";
 import { runFloatingMentorTests } from "./components/floating-mentor.test";
+import { runV13IntelligenceValidationTests } from "./unit/v13-intelligence-validation.test";
+import { runContentAuthIntegrationTests } from "./integration/content-auth.test";
 
 async function runAllSuites() {
   console.log("\n=======================================================");
@@ -57,17 +59,21 @@ async function runAllSuites() {
   printResults("5. Integration: /api/analyze Mock Processing", await runApiAnalyzeIntegrationTests());
   printResults("6. Integration: Plan Quotas & Entitlements", await runQuotasIntegrationTests());
   printResults("7. Integration: Checkout & Webhook Security", await runCheckoutWebhookIntegrationTests());
+  printResults("8. Integration: Content Engine & Content Lab Auth", await runContentAuthIntegrationTests());
 
   // 3. Firestore Security Rules
-  printResults("8. Rules: Firestore Security Matrix", runFirestoreRulesTests());
+  printResults("9. Rules: Firestore Security Matrix", runFirestoreRulesTests());
 
   // 4. Component Tests
-  printResults("9. Component: Onboarding Flow", runOnboardingComponentTests());
-  printResults("10. Component: FileUploader & Drag-Drop", runFileUploaderComponentTests());
-  printResults("11. Component: PaywallModal", runPaywallModalComponentTests());
-  printResults("12. Component: Accessible Modal Infrastructure", runModalA11yComponentTests());
-  printResults("13. Component: Navigation Drawer & Responsive Tabs", runNavigationDrawerTests());
-  printResults("14. Component: Persistent Floating Mentor Widget", runFloatingMentorTests());
+  printResults("10. Component: Onboarding Flow", runOnboardingComponentTests());
+  printResults("11. Component: FileUploader & Drag-Drop", runFileUploaderComponentTests());
+  printResults("12. Component: PaywallModal", runPaywallModalComponentTests());
+  printResults("13. Component: Accessible Modal Infrastructure", runModalA11yComponentTests());
+  printResults("14. Component: Navigation Drawer & Responsive Tabs", runNavigationDrawerTests());
+  printResults("15. Component: Persistent Floating Mentor Widget", runFloatingMentorTests());
+
+  // 5. V13 Intelligence Evolution QA Suite
+  printResults("16. V13 Intelligence: Behavioral & Adversarial QA Suite", runV13IntelligenceValidationTests());
 
   console.log("\n=======================================================");
   console.log(`SUITE SUMMARY: ${totalPassed} PASSED | ${totalFailed} FAILED`);

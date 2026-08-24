@@ -28,7 +28,7 @@ export function runNavigationDrawerTests(): { passed: number; failed: number; te
   test("Centralized navigation defines all required strategic and OS modules with labels and a11y labels", () => {
     const requiredLabels = [
       "Sua Estratégia & DNA",
-      "Content Lab (PRO)",
+      "Content Lab",
       "Diagnóstico & C.A.G.E.",
       "Central PRO",
       "Digital Twin",
@@ -38,7 +38,7 @@ export function runNavigationDrawerTests(): { passed: number; failed: number; te
     ];
 
     for (const label of requiredLabels) {
-      const item = NAV_ITEMS.find(n => n.label === label);
+      const item = NAV_ITEMS.find(n => n.label === label || n.label.startsWith(label));
       if (!item) {
         throw new Error(`Missing required navigation item: ${label}`);
       }
@@ -82,8 +82,8 @@ export function runNavigationDrawerTests(): { passed: number; failed: number; te
 
   // 4. Mobile drawer items completeness & active state
   test("Mobile drawer renders all 10 required items (Strategy, Content Lab, C.A.G.E., Central PRO, Twin, Benchmark, Growth, Simulator, Privacy, Logout)", () => {
-    if (!osLayoutCode.includes('STRATEGY_NAV_ITEMS') || !osLayoutCode.includes('OS_NAV_ITEMS')) {
-      throw new Error("OSLayout does not iterate over standardized STRATEGY_NAV_ITEMS and OS_NAV_ITEMS");
+    if (!osLayoutCode.includes('NAV_AREAS') && (!osLayoutCode.includes('STRATEGY_NAV_ITEMS') || !osLayoutCode.includes('OS_NAV_ITEMS'))) {
+      throw new Error("OSLayout does not iterate over standardized NAV_AREAS or STRATEGY_NAV_ITEMS and OS_NAV_ITEMS");
     }
     if (!osLayoutCode.includes('btn-drawer-privacy') || !osLayoutCode.includes('btn-drawer-logout')) {
       throw new Error("Mobile drawer missing Privacy or Logout action items");

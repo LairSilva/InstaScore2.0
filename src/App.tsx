@@ -38,6 +38,8 @@ const MentorView = lazy(() => import("./modules/mentor/MentorView").then(m => ({
 const GlobalBenchmarkView = lazy(() => import("./modules/benchmark/GlobalBenchmarkView").then(m => ({ default: m.GlobalBenchmarkView })));
 const DigitalTwinView = lazy(() => import("./modules/twin/DigitalTwinView").then(m => ({ default: m.DigitalTwinView })));
 const TimelineView = lazy(() => import("./modules/history/TimelineView").then(m => ({ default: m.TimelineView })));
+const ContentEngineView = lazy(() => import("./modules/content/ContentEngineView").then(m => ({ default: m.ContentEngineView })));
+const ContentLibraryView = lazy(() => import("./modules/content/ContentLibraryView").then(m => ({ default: m.ContentLibraryView })));
 const FloatingMentorWidget = lazy(() => import("./components/FloatingMentorWidget").then(m => ({ default: m.FloatingMentorWidget })));
 const PaywallModal = lazy(() => import("./components/PaywallModal"));
 const MyPlanView = lazy(() => import("./components/MyPlanView"));
@@ -114,6 +116,7 @@ export default function App() {
   // Modal Share Controller
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState(false);
+  const [contentEngineOptions, setContentEngineOptions] = useState<any>(null);
 
   // Interactive UI details (e.g. which category is currently expanded to inspect criteria)
   const [expandedCategory, setExpandedCategory] = useState<string | null>("positioning");
@@ -598,9 +601,48 @@ export default function App() {
           feedStrategyPatterns: ["Carrosséis Educativos", "Post Estático de Prova Social"],
           reelsStrategyPatterns: ["Reels Curtos de Atração", "Vídeos Diretos de Conversão"],
           contentThemes: [niche || "Conteúdo Geral"],
+          prohibitedThemes: [],
+          preferredFormats: ["carousel", "reel"],
           discoveredPatterns: ["Alta retenção com ganchos diretos na primeira frase"],
         },
+        preferences: {
+          approvedStrategies: ["Carrossel de autoridade", "Desconstrução de erros"],
+          rejectedStrategies: [],
+          rejectedFormats: [],
+          excludedThemes: [],
+          preferredAngles: ["Contrarian / Erros Comuns"],
+          userFeedbackNotes: []
+        },
+        behavior: {
+          postingFrequency: "5x por semana",
+          formatsUsed: { carousel: 1, reel: 1, post: 0, story: 0 },
+          themesUsed: [niche || "Conteúdo Geral"],
+          ctasUsed: ["Direct", "Salvamento"],
+          hooksUsed: ["O erro invisível que destrói resultados"]
+        },
+        performance: {
+          topPerformingContents: [],
+          winningFormats: ["carousel", "reel"],
+          winningThemes: [niche || "Conteúdo Geral"],
+          winningHooks: [],
+          winningCtas: [],
+          lowPerformancePatterns: []
+        },
+        learningInsights: [
+          {
+            id: `ins-init-app-${Date.now()}`,
+            insight: `Foco prioritário em ${cats.authority?.percentage && cats.authority.percentage < 60 ? "Autoridade Técnica" : "Conversão Direta"} derivado da auditoria C.A.G.E.`,
+            source: "cage_diagnostic",
+            evidence: `Diagnóstico C.A.G.E. com score inicial de ${score}/100.`,
+            sampleCount: 1,
+            confidence: 85,
+            category: "angle",
+            lastUpdated: new Date().toISOString()
+          }
+        ],
+
         metrics: {
+
           overallScore: score,
           authorityVelocity: Math.round((cats.authority?.percentage || score) * 0.9),
           growthVelocity: Math.round((cats.seo?.percentage || score) * 0.85),
@@ -1476,6 +1518,10 @@ export default function App() {
                           onShare={() => setIsShareModalOpen(true)}
                           activeTab={activeDashboardTab}
                           onTabChange={setActiveDashboardTab}
+                          onNavigateToContentEngine={(opts) => {
+                            setContentEngineOptions(opts || null);
+                            handleOsNavigate("content_engine");
+                          }}
                         />
                       </Suspense>
                     </ErrorBoundary>
@@ -1541,6 +1587,31 @@ export default function App() {
                           digitalTwin={activeDigitalTwin}
                           diagnosisResult={diagnosisResult}
                           currentScore={diagnosisResult.scoring.score || 0}
+                        />
+                      </Suspense>
+                    </ErrorBoundary>
+                  )}
+                  {activeOsModule === "content_engine" && (
+                    <ErrorBoundary fallbackTitle="Erro ao carregar InstaScore Content Engine">
+                      <Suspense fallback={<LazyFallback message="Inicializando Content Engine C.A.G.E...." />}>
+                        <ContentEngineView 
+                          diagnosisResult={diagnosisResult}
+                          startModeResult={startModeResult}
+                          digitalTwin={activeDigitalTwin}
+                          isPro={isPro}
+                          initialOptions={contentEngineOptions}
+                          onOpenPaywall={(reason) => openPaywall(reason)}
+                          onNavigateToLibrary={() => handleOsNavigate("content_library")}
+                        />
+                      </Suspense>
+                    </ErrorBoundary>
+                  )}
+                  {activeOsModule === "content_library" && (
+                    <ErrorBoundary fallbackTitle="Erro ao carregar Biblioteca de Conteúdo">
+                      <Suspense fallback={<LazyFallback message="Carregando Biblioteca de Conteúdo..." />}>
+                        <ContentLibraryView 
+                          isPro={isPro}
+                          onNavigateToCreate={() => handleOsNavigate("content_engine")}
                         />
                       </Suspense>
                     </ErrorBoundary>

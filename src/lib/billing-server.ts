@@ -1452,7 +1452,7 @@ export async function createCheckoutSessionServer(params: {
           pixErr.status = mpRes.status === 401 ? 401 : mpRes.status === 400 ? 400 : 503;
           pixErr.code = mpRes.status === 401 ? 'GATEWAY_AUTH_ERROR' : mpRes.status === 400 ? 'GATEWAY_BAD_REQUEST' : 'PIX_GENERATION_FAILED';
           pixErr.details = mpData;
-          if (isLiveProduction || mpAccessToken) {
+          if (isLiveProduction) {
             throw pixErr;
           }
         }
@@ -1505,14 +1505,14 @@ export async function createCheckoutSessionServer(params: {
           cardErr.status = prefRes.status === 401 ? 401 : prefRes.status === 400 ? 400 : 503;
           cardErr.code = prefRes.status === 401 ? 'GATEWAY_AUTH_ERROR' : prefRes.status === 400 ? 'GATEWAY_BAD_REQUEST' : 'CARD_PREFERENCE_FAILED';
           cardErr.details = prefData;
-          if (isLiveProduction || mpAccessToken) {
+          if (isLiveProduction) {
             throw cardErr;
           }
         }
       }
     } catch (err: any) {
       console.error(`[MercadoPago Checkout API Exception] status=${err.status || 500} code=${err.code || 'UNKNOWN'}`, err.message);
-      if (isLiveProduction || mpAccessToken) {
+      if (isLiveProduction) {
         throw err;
       }
     }

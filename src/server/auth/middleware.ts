@@ -130,7 +130,11 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
   // Standard token verification
   const authHeader = req.headers.authorization;
+  const endpoint = req.originalUrl || req.url;
+
   if (!authHeader || typeof authHeader !== "string" || !authHeader.startsWith("Bearer ")) {
+    const authScheme = authHeader && typeof authHeader === "string" ? authHeader.split(" ")[0] : "NONE";
+    console.warn(`[AuthAudit] AUTH_PRESENT=${Boolean(authHeader)} AUTH_SCHEME=${authScheme} USER_AUTHENTICATED=false TOKEN_VALID=false ENDPOINT=${endpoint}`);
     res.status(401).json({
       success: false,
       error: "UNAUTHORIZED",
@@ -141,6 +145,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
   const token = authHeader.substring(7).trim();
   if (!token) {
+    console.warn(`[AuthAudit] AUTH_PRESENT=true AUTH_SCHEME=Bearer TOKEN_VALID=false USER_AUTHENTICATED=false ENDPOINT=${endpoint}`);
     res.status(401).json({
       success: false,
       error: "UNAUTHORIZED",
@@ -158,10 +163,12 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       req.user.admin = true;
     }
 
+    console.info(`[AuthAudit] AUTH_PRESENT=true AUTH_SCHEME=Bearer TOKEN_VALID=true USER_AUTHENTICATED=true USER_ID=${req.user.uid} ENDPOINT=${endpoint}`);
+
     sanitizeAndEnforceAuthenticatedIdentity(req);
     return next();
   } catch (err: any) {
-    console.warn("[AuthMiddleware] Token verification failed:", err?.message || err);
+    console.warn(`[AuthAudit] AUTH_PRESENT=true AUTH_SCHEME=Bearer TOKEN_VALID=false USER_AUTHENTICATED=false ENDPOINT=${endpoint} REASON=${err?.code || err?.message || "verification_failed"}`);
     res.status(401).json({
       success: false,
       error: "UNAUTHORIZED",

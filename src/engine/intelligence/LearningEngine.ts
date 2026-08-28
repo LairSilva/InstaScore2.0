@@ -66,7 +66,8 @@ export class LearningEngine {
       carousel: { total: 0, positive: 0, negative: 0, avgQuality: 0 },
       reel: { total: 0, positive: 0, negative: 0, avgQuality: 0 },
       post: { total: 0, positive: 0, negative: 0, avgQuality: 0 },
-      story: { total: 0, positive: 0, negative: 0, avgQuality: 0 }
+      story: { total: 0, positive: 0, negative: 0, avgQuality: 0 },
+      static_post: { total: 0, positive: 0, negative: 0, avgQuality: 0 }
     };
 
     for (const rec of historyRecords) {
@@ -171,7 +172,8 @@ export class LearningEngine {
         carousel: formatCounts.carousel.total,
         reel: formatCounts.reel.total,
         post: formatCounts.post.total,
-        story: formatCounts.story.total
+        story: formatCounts.story.total,
+        static_post: formatCounts.static_post?.total || 0
       },
       themesUsed: Array.from(new Set([...(twin.behavior?.themesUsed || []), ...historyRecords.map(r => r.theme)])).slice(0, 30),
       ctasUsed: Array.from(new Set([...(twin.behavior?.ctasUsed || []), ...historyRecords.map(r => r.cta)])).slice(0, 20),

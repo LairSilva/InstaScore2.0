@@ -38,6 +38,9 @@ import {
 import { ContentDNACard } from "../../components/content/ContentDNACard";
 import { ContentDetailModal } from "../../components/content/ContentDetailModal";
 import { ContentGenerationErrorBoundary } from "./ContentGenerationErrorBoundary";
+import { CarouselEngineProView } from "./carousel/CarouselEngineProView";
+import { ContentProductionProView } from "./production/ContentProductionProView";
+import { ContentProductionFormat } from "../../types/content-production";
 import { buildContentDNA } from "../../engine/content/ContentDNAEngine";
 import { FeedbackEngine } from "../../engine/intelligence/FeedbackEngine";
 import { ExpandedContentMemory } from "../../engine/content/ContentMemoryEngine";
@@ -61,7 +64,7 @@ interface ContentEngineViewProps {
   } | null;
 }
 
-type EngineMode = "overview" | "create_now" | "fix_problem" | "plan_calendar" | "campaign";
+type EngineMode = "overview" | "create_now" | "carousel_pro" | "fix_problem" | "plan_calendar" | "campaign";
 
 export const ContentEngineView: React.FC<ContentEngineViewProps> = ({
   diagnosisResult,
@@ -87,6 +90,8 @@ export const ContentEngineView: React.FC<ContentEngineViewProps> = ({
   const [twinState, setTwinState] = useState<DigitalTwin>(() => {
     return propDigitalTwin || createDefaultDigitalTwin();
   });
+
+  const [productionFormat, setProductionFormat] = useState<ContentProductionFormat>("carousel");
 
   const [contentMemory, setContentMemory] = useState<ExpandedContentMemory>({
     userId: dna.handle || "user-default",
@@ -221,8 +226,8 @@ export const ContentEngineView: React.FC<ContentEngineViewProps> = ({
       setStrategicRationale(data.strategicRationale || "");
     } catch (err: any) {
       console.error("[Generate Ideas Error]", err);
-      if (err instanceof ApiError && err.status === 403 && onOpenPaywall) {
-        onOpenPaywall(err.message);
+      if (err instanceof ApiError && (err.status === 403 || err.status === 429) && onOpenPaywall) {
+        onOpenPaywall(err.message || "Você atingiu o limite de gerações de IA. Desbloqueie o plano PRO para acesso ilimitado.");
         return;
       }
       setErrorMessage(err.message || "Não foi possível gerar as ideias agora.");
@@ -277,8 +282,8 @@ export const ContentEngineView: React.FC<ContentEngineViewProps> = ({
       saveToLibrary(completeIdea);
     } catch (err: any) {
       console.error("[Generate Full Content Error]", err);
-      if (err instanceof ApiError && err.status === 403 && onOpenPaywall) {
-        onOpenPaywall(err.message);
+      if (err instanceof ApiError && (err.status === 403 || err.status === 429) && onOpenPaywall) {
+        onOpenPaywall(err.message || "Você atingiu o limite de gerações de IA. Desbloqueie o plano PRO para acesso ilimitado.");
         return;
       }
       setErrorMessage(err.message || "Erro durante a redação profunda do conteúdo.");
@@ -451,8 +456,59 @@ export const ContentEngineView: React.FC<ContentEngineViewProps> = ({
         {/* Action Modes Grid (Shown in Overview) */}
         {currentMode === "overview" && (
           <div className="space-y-4">
-            <h2 className="text-xs uppercase font-mono font-bold tracking-widest text-slate-400">
-              Escolha seu modo de criação
+            {/* FEATURED: CONTENT ENGINE PRO (CAROUSEL + STATIC POST) BANNER */}
+            <motion.div
+              whileHover={{ y: -2, scale: 1.005 }}
+              className="p-6 rounded-3xl bg-gradient-to-r from-[#1E112A] via-[#161228] to-[#121A30] border border-[#FA26A0]/40 shadow-2xl relative overflow-hidden group"
+            >
+              <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-bl from-[#FA26A0]/20 via-[#E1306C]/10 to-transparent blur-3xl pointer-events-none" />
+              <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full bg-gradient-to-r from-[#FA26A0] to-[#FF5E36] text-white">
+                      NOVO ENGINE V14 PRO
+                    </span>
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
+                      <Check size={11} /> PRONTO P/ PUBLICAR
+                    </span>
+                  </div>
+                  <h3 className="text-lg sm:text-xl font-extrabold text-white font-display flex items-center gap-2.5">
+                    <Layers size={22} className="text-[#FA26A0]" />
+                    <span>Content Engine PRO: Produção End-to-End</span>
+                  </h3>
+                  <p className="text-xs sm:text-sm text-slate-300 max-w-2xl leading-relaxed">
+                    Estratégia + Copy + Geração Visual + Composição + Quality Gate 2.0 + Render Final em Alta Resolução (1080x1350).
+                  </p>
+                </div>
+                <div className="shrink-0 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProductionFormat("carousel");
+                      setCurrentMode("carousel_pro");
+                    }}
+                    className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:opacity-95 text-white font-bold text-xs flex items-center gap-2 shadow-lg cursor-pointer"
+                  >
+                    <Layers size={14} />
+                    <span>Carrossel PRO</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProductionFormat("static_post");
+                      setCurrentMode("carousel_pro");
+                    }}
+                    className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-pink-600 to-rose-600 hover:opacity-95 text-white font-bold text-xs flex items-center gap-2 shadow-lg cursor-pointer"
+                  >
+                    <FileText size={14} />
+                    <span>Post Estático PRO</span>
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+
+            <h2 className="text-xs uppercase font-mono font-bold tracking-widest text-slate-400 pt-2">
+              Outros Modos de Criação
             </h2>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -592,17 +648,45 @@ export const ContentEngineView: React.FC<ContentEngineViewProps> = ({
 
         {/* ERROR MESSAGE */}
         {errorMessage && (
-          <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center gap-3 text-xs text-rose-300">
-            <AlertCircle size={18} className="text-rose-400 shrink-0" />
-            <div className="flex-1">{errorMessage}</div>
-            <button
-              type="button"
-              onClick={() => setErrorMessage(null)}
-              className="text-xs font-bold underline hover:text-white"
-            >
-              Fechar
-            </button>
+          <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex flex-wrap items-center justify-between gap-3 text-xs text-rose-300">
+            <div className="flex items-center gap-3 flex-1 min-w-[240px]">
+              <AlertCircle size={18} className="text-rose-400 shrink-0" />
+              <div>{errorMessage}</div>
+            </div>
+            <div className="flex items-center gap-2">
+              {onOpenPaywall && (errorMessage.includes("limite") || errorMessage.includes("quota") || errorMessage.includes("PRO")) && (
+                <button
+                  type="button"
+                  onClick={() => onOpenPaywall(errorMessage)}
+                  className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-[#FF5E36] to-[#E1306C] text-white font-bold text-xs hover:brightness-110 transition-all shadow-md"
+                >
+                  Fazer Upgrade para PRO
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setErrorMessage(null)}
+                className="px-2 py-1 text-xs font-bold text-slate-400 hover:text-white"
+              >
+                Fechar
+              </button>
+            </div>
           </div>
+        )}
+
+        {/* CONTENT ENGINE PRO (CAROUSEL + STATIC POST) MODE */}
+        {currentMode === "carousel_pro" && (
+          <ContentProductionProView
+            dna={dna}
+            digitalTwin={twinState}
+            isPro={isPro}
+            onOpenPaywall={onOpenPaywall}
+            onSavedToLibrary={saveToLibrary}
+            onBackToModes={() => setCurrentMode("overview")}
+            initialFormat={productionFormat}
+            initialTopic={customTheme}
+            initialObjective={selectedObjective}
+          />
         )}
 
         {/* MODE 1: CRIAR AGORA INTERFACE */}
@@ -647,6 +731,50 @@ export const ContentEngineView: React.FC<ContentEngineViewProps> = ({
                     );
                   })}
                 </div>
+
+                {selectedFormat === "carousel" && (
+                  <div className="mt-3 p-3 rounded-2xl bg-gradient-to-r from-violet-900/30 via-indigo-900/30 to-purple-900/30 border border-violet-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <Sparkles size={16} className="text-violet-400 shrink-0" />
+                      <span className="text-xs text-white">
+                        Deseja criar um carrossel completo pronto para publicar com design, canvas 1080x1350 e download de todos os slides?
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProductionFormat("carousel");
+                        setCurrentMode("carousel_pro");
+                      }}
+                      className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-bold text-xs shrink-0 flex items-center gap-1.5 shadow-md hover:brightness-110 cursor-pointer"
+                    >
+                      <span>Abrir no Carrossel Engine PRO</span>
+                      <ArrowRight size={13} />
+                    </button>
+                  </div>
+                )}
+
+                {selectedFormat === "post" && (
+                  <div className="mt-3 p-3 rounded-2xl bg-gradient-to-r from-pink-900/30 via-rose-900/30 to-purple-900/30 border border-pink-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <Sparkles size={16} className="text-pink-400 shrink-0" />
+                      <span className="text-xs text-white">
+                        Deseja criar um post estático completo com arte em alta resolução 1080x1350, tipografia e legenda final?
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProductionFormat("static_post");
+                        setCurrentMode("carousel_pro");
+                      }}
+                      className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-pink-600 to-rose-600 text-white font-bold text-xs shrink-0 flex items-center gap-1.5 shadow-md hover:brightness-110 cursor-pointer"
+                    >
+                      <span>Abrir no Post Estático PRO</span>
+                      <ArrowRight size={13} />
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Step 2: Objective Selector */}

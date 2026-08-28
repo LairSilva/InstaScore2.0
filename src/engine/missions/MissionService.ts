@@ -34,6 +34,33 @@ const BANNED_CLICHES = [
 ];
 
 /**
+ * Execute AI call across primary and fallback models with graceful degradation
+ */
+async function executeMissionAi(ai: GoogleGenAI, prompt: string, temperature: number = 0.4): Promise<any> {
+  const models = [AI_MODEL_ROUTER.primaryModel, ...AI_MODEL_ROUTER.fallbackModels];
+  let lastError: any = null;
+
+  for (const model of models) {
+    try {
+      const response = await ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          temperature
+        }
+      });
+      return cleanAndParseJson(response.text);
+    } catch (err: any) {
+      lastError = err;
+      console.log(`[MissionService] Notice: Model ${model} unavailable, trying fallback...`);
+    }
+  }
+
+  throw lastError || new Error("ALL_MISSION_AI_MODELS_FAILED");
+}
+
+/**
  * Anti-genericity evaluator: checks text for clichés and returns a penalty score (0-100)
  */
 export function evaluateGenericity(text: string): { score: number; foundCliches: string[] } {
@@ -145,16 +172,7 @@ DIRETRIZES OBRIGATÓRIAS:
 `;
 
     try {
-      const response = await ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          temperature: 0.4
-        }
-      });
-
-      const parsed = cleanAndParseJson(response.text);
+      const parsed = await executeMissionAi(ai, prompt, 0.4);
       const options: SeoNameOption[] = parsed.options || [];
 
       return {
@@ -268,16 +286,7 @@ Retorne em JSON:
 `;
 
     try {
-      const response = await ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          temperature: 0.4
-        }
-      });
-
-      const parsed = cleanAndParseJson(response.text);
+      const parsed = await executeMissionAi(ai, prompt, 0.4);
       const highlights: StrategicHighlightItem[] = parsed.highlights || [];
 
       return {
@@ -421,16 +430,7 @@ Retorne em JSON:
 `;
 
     try {
-      const response = await ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          temperature: 0.5
-        }
-      });
-
-      const parsed = cleanAndParseJson(response.text);
+      const parsed = await executeMissionAi(ai, prompt, 0.5);
       const deliverable: HumanizationDeliverable = parsed;
 
       return {
@@ -569,16 +569,7 @@ Retorne em JSON:
 `;
 
     try {
-      const response = await ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          temperature: 0.4
-        }
-      });
-
-      const parsed = cleanAndParseJson(response.text);
+      const parsed = await executeMissionAi(ai, prompt, 0.4);
       const deliverable: AuthorityDeliverable = parsed;
 
       return {
@@ -713,16 +704,7 @@ Retorne em JSON:
 `;
 
     try {
-      const response = await ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          temperature: 0.45
-        }
-      });
-
-      const parsed = cleanAndParseJson(response.text);
+      const parsed = await executeMissionAi(ai, prompt, 0.45);
       let bios: BioOption[] = parsed.bios || [];
 
       // Run anti-genericity validation on all generated bios
@@ -874,16 +856,7 @@ Retorne em JSON:
 `;
 
     try {
-      const response = await ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          temperature: 0.4
-        }
-      });
-
-      const parsed = cleanAndParseJson(response.text);
+      const parsed = await executeMissionAi(ai, prompt, 0.4);
       const custom: CustomMissionDeliverable = parsed;
 
       return {

@@ -16,13 +16,13 @@ export class ApiError extends Error {
 
 /**
  * Robust authenticated fetch client that handles Firebase ID Tokens,
- * controlled 401 token refresh retry (max 1 retry), automatic error categorization,
- * and strict prohibition of x-user-id headers.
+ * controlled 401 token refresh retry (max 1 retry), transient network retry (max 2 retries),
+ * automatic error categorization, and strict prohibition of x-user-id headers.
  */
 export async function apiFetch<T = any>(
   endpoint: string,
   options: RequestInit = {},
-  isRetry: boolean = false
+  retryCount: number = 0
 ): Promise<T> {
   const headers = new Headers(options.headers || {});
   
@@ -54,6 +54,14 @@ export async function apiFetch<T = any>(
       headers
     });
   } catch (err: any) {
+    // If transient network error and under max retries (e.g. server restart or network hiccup), retry with backoff
+    if (retryCount < 2) {
+      const delayMs = 600 * Math.pow(1.5, retryCount);
+      console.warn(`[apiFetch] Network hiccup on ${endpoint}. Retrying in ${delayMs}ms (attempt ${retryCount + 1}/2)...`);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+      return await apiFetch<T>(endpoint, options, retryCount + 1);
+    }
+
     throw new ApiError(
       0,
       "NETWORK_ERROR",
@@ -63,13 +71,13 @@ export async function apiFetch<T = any>(
 
   // Handle token expiration / unauthorized with controlled 1-time retry
   if (res.status === 401) {
-    if (!isRetry) {
+    if (retryCount === 0) {
       try {
         const freshToken = await getAuthIdToken(true);
         if (freshToken) {
           const retryHeaders = new Headers(headers);
           retryHeaders.set("Authorization", `Bearer ${freshToken}`);
-          return await apiFetch<T>(endpoint, { ...options, headers: retryHeaders }, true);
+          return await apiFetch<T>(endpoint, { ...options, headers: retryHeaders }, retryCount + 1);
         }
       } catch (refreshErr) {
         console.warn("[apiFetch] Token refresh attempt failed on 401:", refreshErr);

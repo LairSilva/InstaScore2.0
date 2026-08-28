@@ -9,6 +9,7 @@ import {
   ShieldCheck,
   Crown,
   CreditCard,
+  Sparkles,
 } from "lucide-react";
 
 import BrandSymbol, { BrandLogo } from "./components/BrandSymbol";
@@ -143,77 +144,145 @@ export default function App() {
     { title: "Construir comunidade", desc: "Engajar seguidores fieis e criar defensores da marca" },
   ];
 
-  // Active Loading progression logic
+  // 7 Real Diagnostic Pipeline Stages (UX 2.0)
+  const DIAGNOSTIC_STAGES = [
+    {
+      id: 1,
+      minProgress: 0,
+      maxProgress: 20,
+      title: "Validando seu perfil",
+      subtext: "Verificando os dados necessários para sua análise.",
+      teaser: "Iniciando leitura das capturas de tela e validação dos dados..."
+    },
+    {
+      id: 2,
+      minProgress: 20,
+      maxProgress: 40,
+      title: "Analisando seu posicionamento",
+      subtext: "Identificando como seu perfil está sendo percebido.",
+      teaser: "Identificamos uma possível oportunidade de posicionamento..."
+    },
+    {
+      id: 3,
+      minProgress: 40,
+      maxProgress: 60,
+      title: "Calculando seu C.A.G.E.",
+      subtext: "Avaliando Clareza, Autoridade, Gancho e Engajamento.",
+      teaser: "Estamos encontrando padrões importantes no seu perfil..."
+    },
+    {
+      id: 4,
+      minProgress: 60,
+      maxProgress: 75,
+      title: "Comparando seu perfil com seu nicho",
+      subtext: "Encontrando padrões e oportunidades relevantes.",
+      teaser: "Estamos cruzando seu perfil com padrões do seu nicho..."
+    },
+    {
+      id: 5,
+      minProgress: 75,
+      maxProgress: 90,
+      title: "Identificando seus principais gargalos",
+      subtext: "Descobrindo o que está limitando seu crescimento.",
+      teaser: "Seu diagnóstico está ficando mais específico..."
+    },
+    {
+      id: 6,
+      minProgress: 90,
+      maxProgress: 97,
+      title: "Construindo sua estratégia",
+      subtext: "Transformando os dados em ações práticas.",
+      teaser: "Construindo suas ações práticas e plano de implementação..."
+    },
+    {
+      id: 7,
+      minProgress: 97,
+      maxProgress: 100,
+      title: "Finalizando seu diagnóstico",
+      subtext: "Preparando suas próximas recomendações.",
+      teaser: "Seu diagnóstico está pronto! Carregando painel de inteligência..."
+    }
+  ];
+
+  // Active Loading progression logic (No 75% stall, smooth continuous state-driven pacing)
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    let timer: NodeJS.Timeout;
     if (view === "processing") {
-      if (analysisStatus === "success") {
-        setProcessingProgress(100);
-        const timer = setTimeout(() => {
-          setView("result");
-        }, 1200);
-        return () => clearTimeout(timer);
-      } else if (analysisStatus === "error") {
+      if (analysisStatus === "error") {
         return;
       }
 
-      // Smooth progress rise calibrated to real pipeline stages
-      interval = setInterval(() => {
+      if (analysisStatus === "success") {
+        // Fast-forward smoothly to 100% and transition
+        const finishInterval = setInterval(() => {
+          setProcessingProgress((prev) => {
+            if (prev >= 100) {
+              clearInterval(finishInterval);
+              timer = setTimeout(() => {
+                setView("result");
+              }, 600);
+              return 100;
+            }
+            return Math.min(100, prev + 3);
+          });
+        }, 40);
+
+        return () => {
+          clearInterval(finishInterval);
+          clearTimeout(timer);
+        };
+      }
+
+      // Smooth progression across the 7 stages while awaiting backend
+      const interval = setInterval(() => {
         setProcessingProgress((prev) => {
-          if (analysisStatus === "uploading") {
-            if (prev < 20) return prev + 2;
-          } else if (analysisStatus === "analyzing") {
-            // Smoothly move between 20% and 75% during multimodal vision processing
-            if (prev < 75) {
-              const remaining = 75 - prev;
-              const step = Math.max(1, Math.floor(remaining / 14));
-              return prev + step;
-            }
-          } else if (analysisStatus === "validating") {
-            // Once server returns payload, advance swiftly from 85% to 95%
-            if (prev < 95) {
-              const step = Math.max(1, Math.floor((95 - prev) / 4));
-              return prev + step;
-            }
-          } else {
-            // General fallback progression
-            if (prev < 75) {
-              return prev + 1;
-            }
+          if (prev < 20) {
+            // Stage 1 (0-20%): swift initiation
+            return prev + 2;
+          } else if (prev < 40) {
+            // Stage 2 (20-40%): positioning check
+            return prev + 1;
+          } else if (prev < 60) {
+            // Stage 3 (40-60%): C.A.G.E. calculation
+            return prev + 1;
+          } else if (prev < 75) {
+            // Stage 4 (60-75%): niche benchmark comparison
+            return prev + 1;
+          } else if (prev < 90) {
+            // Stage 5 (75-90%): bottlenecks analysis (smoothly crosses 75% without stalling!)
+            return prev + 1;
+          } else if (prev < 96) {
+            // Stage 6 (90-96%): strategy synthesis
+            return prev + 1;
           }
           return prev;
         });
-      }, 400);
+      }, 280);
+
+      return () => {
+        clearInterval(interval);
+        clearTimeout(timer);
+      };
     } else {
       setProcessingProgress(0);
     }
-    return () => clearInterval(interval);
   }, [view, analysisStatus]);
 
-  // Sync processingState text with analysisStatus
+  // Sync processingState text dynamically with current active stage
   useEffect(() => {
     if (view === "processing") {
-      switch (analysisStatus) {
-        case "uploading":
-          setProcessingState("Preparando arquivos e autenticação segura...");
-          break;
-        case "analyzing":
-          setProcessingState("Visão computacional e leitura multimodal do perfil...");
-          break;
-        case "validating":
-          setProcessingState("Calculando dimensão C.A.G.E. e prioridades estratégicas...");
-          break;
-        case "success":
-          setProcessingState("Diagnóstico estrutural concluído com sucesso!");
-          break;
-        case "error":
-          setProcessingState("Não foi possível concluir o diagnóstico.");
-          break;
-        default:
-          setProcessingState("Iniciando auditoria estrutural...");
+      if (analysisStatus === "error") {
+        setProcessingState("Não foi possível concluir o diagnóstico.");
+      } else if (analysisStatus === "success" || processingProgress >= 97) {
+        setProcessingState("Finalizando seu diagnóstico...");
+      } else {
+        const currentStage = DIAGNOSTIC_STAGES.find(
+          (s) => processingProgress >= s.minProgress && processingProgress < s.maxProgress
+        ) || DIAGNOSTIC_STAGES[0];
+        setProcessingState(currentStage.title);
       }
     }
-  }, [view, analysisStatus]);
+  }, [view, analysisStatus, processingProgress]);
 
   // Dynamic document title management across views and sub-routes
   useEffect(() => {
@@ -544,10 +613,6 @@ export default function App() {
         return;
       }
 
-      // Signal validating step before transitioning
-      setAnalysisStatus("validating");
-      setProcessingProgress(85);
-
       // Store results and set success state. Navigation happens after 100% completion delay
       setDiagnosisResult(data);
       import("./lib/firebase")
@@ -615,7 +680,7 @@ export default function App() {
         },
         behavior: {
           postingFrequency: "5x por semana",
-          formatsUsed: { carousel: 1, reel: 1, post: 0, story: 0 },
+          formatsUsed: { carousel: 1, reel: 1, post: 0, story: 0, static_post: 0 },
           themesUsed: [niche || "Conteúdo Geral"],
           ctasUsed: ["Direct", "Salvamento"],
           hooksUsed: ["O erro invisível que destrói resultados"]
@@ -790,6 +855,210 @@ export default function App() {
     if (score <= 90) return { label: "Bom", colorClass: "text-indigo-400 bg-indigo-950/30 border-indigo-800/50" };
     return { label: "Excelente", colorClass: "text-emerald-400 bg-emerald-950/30 border-emerald-800/50" };
   };
+
+  // If in OS Result view, render OSLayout directly as the root OS experience
+  if (view === "result" && diagnosisResult) {
+    return (
+      <div id="instascore-app-wrapper" className="h-[100dvh] w-full bg-deep-space bg-tech-grid text-slate-100 selection:bg-[#E1306C] selection:text-white relative overflow-hidden flex flex-col">
+        {/* Background Ambient Auroras & Lights */}
+        <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden" aria-hidden="true">
+          <div className="absolute -top-40 -left-40 w-96 h-96 bg-[#833AB4]/20 rounded-full blur-[120px] animate-aurora"></div>
+          <div className="absolute top-1/3 -right-40 w-96 h-96 bg-[#E1306C]/15 rounded-full blur-[140px] animate-aurora" style={{ animationDelay: '-4s' }}></div>
+          <div className="absolute -bottom-40 left-1/3 w-96 h-96 bg-[#38BDF8]/15 rounded-full blur-[130px] animate-aurora" style={{ animationDelay: '-8s' }}></div>
+        </div>
+
+        <ErrorBoundary fallbackTitle="Erro ao carregar Sistema Operacional">
+          <Suspense fallback={<LazyFallback message="Carregando Sistema Operacional..." minHeight="min-h-screen" />}>
+            <OSLayout
+              userName={userName}
+              handle={handle}
+              score={diagnosisResult.scoring.score || 0}
+              onLogout={handleReset}
+              activeModule={activeOsModule}
+              activeSubTab={activeDashboardTab}
+              onNavigate={handleOsNavigate}
+              onOpenPrivacy={() => setIsPrivacyModalOpen(true)}
+              onOpenPlan={() => setView("my-plan")}
+              isPro={isPro}
+              floatingElement={
+                activeOsModule !== "mentor" ? (
+                  <Suspense fallback={null}>
+                    <FloatingMentorWidget
+                      diagnosisResult={diagnosisResult}
+                      digitalTwin={activeDigitalTwin}
+                      userName={userName}
+                      onOpenFullMentor={() => setActiveOsModule("mentor")}
+                    />
+                  </Suspense>
+                ) : null
+              }
+            >
+              {activeOsModule === "dashboard" && (
+                <ErrorBoundary fallbackTitle="Erro ao carregar Painel de Diagnóstico">
+                  <Suspense fallback={<LazyFallback message="Carregando Auditoria C.A.G.E...." />}>
+                    <ResultView 
+                      digitalTwin={activeDigitalTwin}
+                      diagnosisResult={diagnosisResult}
+                      isDemoMode={isDemoMode}
+                      userName={userName}
+                      niche={niche}
+                      handle={handle}
+                      onReset={handleReset}
+                      onShare={() => setIsShareModalOpen(true)}
+                      activeTab={activeDashboardTab}
+                      onTabChange={setActiveDashboardTab}
+                      onNavigateToContentEngine={(opts) => {
+                        setContentEngineOptions(opts || null);
+                        handleOsNavigate("content_engine");
+                      }}
+                    />
+                  </Suspense>
+                </ErrorBoundary>
+              )}
+              {activeOsModule === "benchmark" && (
+                <ErrorBoundary fallbackTitle="Erro ao carregar Benchmark">
+                  <Suspense fallback={<LazyFallback message="Carregando Inteligência de Benchmark..." />}>
+                    <GlobalBenchmarkView
+                      digitalTwin={activeDigitalTwin}
+                      onNavigateToGrowth={() => setActiveOsModule("growth")}
+                    />
+                  </Suspense>
+                </ErrorBoundary>
+              )}
+              {activeOsModule === "twin" && (
+                <ErrorBoundary fallbackTitle="Erro ao carregar Digital Twin">
+                  <Suspense fallback={<LazyFallback message="Carregando Digital Twin..." />}>
+                    <DigitalTwinView
+                      digitalTwin={activeDigitalTwin}
+                    />
+                  </Suspense>
+                </ErrorBoundary>
+              )}
+              {activeOsModule === "simulator" && (
+                <ErrorBoundary fallbackTitle="Erro ao carregar Simulador">
+                  <Suspense fallback={<LazyFallback message="Carregando Simulador de Cenários..." />}>
+                    <SimulatorView 
+                      digitalTwin={activeDigitalTwin}
+                      diagnosisResult={diagnosisResult}
+                      currentScore={diagnosisResult.scoring.score || 0}
+                    />
+                  </Suspense>
+                </ErrorBoundary>
+              )}
+              {activeOsModule === "growth" && (
+                <ErrorBoundary fallbackTitle="Erro ao carregar Growth Center">
+                  <Suspense fallback={<LazyFallback message="Carregando Growth Center..." />}>
+                    <GrowthCenterView 
+                      diagnosisResult={diagnosisResult} 
+                      digitalTwin={activeDigitalTwin}
+                      userName={userName}
+                      handle={handle}
+                      niche={niche}
+                    />
+                  </Suspense>
+                </ErrorBoundary>
+              )}
+              {activeOsModule === "mentor" && (
+                <ErrorBoundary fallbackTitle="Erro ao carregar Mentor IA">
+                  <Suspense fallback={<LazyFallback message="Conectando com Mentor Estratégico..." />}>
+                    <MentorView 
+                      digitalTwin={activeDigitalTwin}
+                      diagnosisResult={diagnosisResult}
+                      userName={userName}
+                    />
+                  </Suspense>
+                </ErrorBoundary>
+              )}
+              {activeOsModule === "history" && (
+                <ErrorBoundary fallbackTitle="Erro ao carregar Linha do Tempo">
+                  <Suspense fallback={<LazyFallback message="Carregando Histórico e Evolução..." />}>
+                    <TimelineView 
+                      digitalTwin={activeDigitalTwin}
+                      diagnosisResult={diagnosisResult}
+                      currentScore={diagnosisResult.scoring.score || 0}
+                    />
+                  </Suspense>
+                </ErrorBoundary>
+              )}
+              {activeOsModule === "content_engine" && (
+                <ErrorBoundary fallbackTitle="Erro ao carregar InstaScore Content Engine">
+                  <Suspense fallback={<LazyFallback message="Inicializando Content Engine C.A.G.E...." />}>
+                    <ContentEngineView 
+                      diagnosisResult={diagnosisResult}
+                      startModeResult={startModeResult}
+                      digitalTwin={activeDigitalTwin}
+                      isPro={isPro}
+                      initialOptions={contentEngineOptions}
+                      onOpenPaywall={(reason) => openPaywall(reason)}
+                      onNavigateToLibrary={() => handleOsNavigate("content_library")}
+                    />
+                  </Suspense>
+                </ErrorBoundary>
+              )}
+              {activeOsModule === "content_library" && (
+                <ErrorBoundary fallbackTitle="Erro ao carregar Biblioteca de Conteúdo">
+                  <Suspense fallback={<LazyFallback message="Carregando Biblioteca de Conteúdo..." />}>
+                    <ContentLibraryView 
+                      isPro={isPro}
+                      onNavigateToCreate={() => handleOsNavigate("content_engine")}
+                    />
+                  </Suspense>
+                </ErrorBoundary>
+              )}
+            </OSLayout>
+          </Suspense>
+        </ErrorBoundary>
+
+        {/* Paywall Modal */}
+        {isPaywallOpen && (
+          <ErrorBoundary fallbackTitle="Erro ao carregar modal de planos">
+            <Suspense fallback={null}>
+              <PaywallModal
+                isOpen={isPaywallOpen}
+                onClose={closePaywall}
+                userId={userId}
+                reason={paywallReason}
+                onSuccess={() => {
+                  refreshStatus();
+                }}
+              />
+            </Suspense>
+          </ErrorBoundary>
+        )}
+
+        {/* Privacy, Minimization & Data Retention Modal */}
+        {isPrivacyModalOpen && (
+          <ErrorBoundary fallbackTitle="Erro ao abrir modal de privacidade">
+            <Suspense fallback={null}>
+              <PrivacyDataModal
+                isOpen={isPrivacyModalOpen}
+                onClose={() => setIsPrivacyModalOpen(false)}
+                userId={userId}
+                onDataDeleted={handleReset}
+              />
+            </Suspense>
+          </ErrorBoundary>
+        )}
+
+        {/* Social Share Modal (1080x1080 canvas generated only when opened) */}
+        {isShareModalOpen && diagnosisResult && (
+          <ErrorBoundary fallbackTitle="Erro ao gerar cartão de compartilhamento">
+            <Suspense fallback={null}>
+              <ShareModal
+                isOpen={isShareModalOpen}
+                onClose={() => setIsShareModalOpen(false)}
+                userName={userName || handle || "Perfil Instagram"}
+                handle={handle}
+                score={diagnosisResult.scoring?.score || 0}
+                targetScore={diagnosisResult.scoring?.targetScore || diagnosisResult.scoring?.score || 0}
+                strongestCategory={diagnosisResult.scoring?.strongestCategory?.name || "Posicionamento"}
+              />
+            </Suspense>
+          </ErrorBoundary>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div id="instascore-app-wrapper" className="min-h-screen bg-deep-space bg-tech-grid text-slate-100 flex flex-col justify-between selection:bg-[#E1306C] selection:text-white relative overflow-x-hidden">
@@ -1381,19 +1650,35 @@ export default function App() {
                 </div>
               </div>
             ) : (
-              <div id="processing-loader-container" role="status" aria-live="polite" className="max-w-xl w-full mx-auto text-center py-8 space-y-8 animate-fade-in">
+              <div id="processing-loader-container" role="status" aria-live="polite" className="max-w-xl w-full mx-auto text-center py-6 sm:py-8 space-y-6 sm:space-y-8 animate-fade-in">
                 
                 {/* Score Pulse Orb Loader */}
                 <div className="relative inline-flex items-center justify-center mx-auto" aria-hidden="true">
                   <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-[#FF5E36] via-[#E1306C] to-[#833AB4] blur-2xl opacity-40 animate-pulse"></div>
-                  <div className="w-28 h-28 rounded-full border-4 border-white/10 border-t-[#FF5E36] border-r-[#E1306C] border-b-[#833AB4] animate-spin"></div>
+                  <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full border-4 border-white/10 border-t-[#FF5E36] border-r-[#E1306C] border-b-[#833AB4] animate-spin"></div>
                   <div className="absolute">
-                    <BrandSymbol size={52} />
+                    <BrandSymbol size={46} />
                   </div>
                 </div>
 
-                <div className="space-y-4">
-                  <h2 className="text-xl font-extrabold text-white font-display tracking-tight">Processando Inteligência de Perfil</h2>
+                {/* Main Heading & Current Stage */}
+                <div className="space-y-3">
+                  {(() => {
+                    const activeStage = DIAGNOSTIC_STAGES.find(
+                      (s) => processingProgress >= s.minProgress && processingProgress < s.maxProgress
+                    ) || (processingProgress >= 100 ? DIAGNOSTIC_STAGES[DIAGNOSTIC_STAGES.length - 1] : DIAGNOSTIC_STAGES[0]);
+
+                    return (
+                      <div className="space-y-1.5">
+                        <h2 className="text-xl sm:text-2xl font-black text-white font-display tracking-tight">
+                          {activeStage.title}
+                        </h2>
+                        <p className="text-xs sm:text-sm text-slate-300 max-w-md mx-auto">
+                          {activeStage.subtext}
+                        </p>
+                      </div>
+                    );
+                  })()}
                   
                   {/* Progress bar container */}
                   <div 
@@ -1412,58 +1697,61 @@ export default function App() {
                   <span className="text-xs text-[#FA26A0] block font-mono font-bold tracking-widest">{processingProgress}% CONCLUÍDO</span>
                 </div>
 
-                {/* AI Interactive Terminal Checklist */}
-                <div className="glass-panel rounded-2xl p-6 text-left space-y-3 font-mono text-xs shadow-2xl border border-white/10 max-w-lg mx-auto">
-                  <div className="flex items-center justify-between pb-3 border-b border-white/10 text-slate-400 font-bold text-[10px] tracking-widest uppercase">
-                    <span>InstaScore AI Engine v6</span>
-                    <span className="flex items-center gap-1.5 text-emerald-400">
+                {/* Dynamic Value Perception Teaser Banner */}
+                {(() => {
+                  const activeStage = DIAGNOSTIC_STAGES.find(
+                    (s) => processingProgress >= s.minProgress && processingProgress < s.maxProgress
+                  ) || (processingProgress >= 100 ? DIAGNOSTIC_STAGES[DIAGNOSTIC_STAGES.length - 1] : DIAGNOSTIC_STAGES[0]);
+
+                  return (
+                    <div className="max-w-lg mx-auto p-3 sm:p-3.5 rounded-xl bg-gradient-to-r from-violet-950/40 via-fuchsia-950/20 to-slate-900/60 border border-violet-500/20 flex items-center gap-3 text-left">
+                      <div className="w-8 h-8 rounded-lg bg-violet-500/10 border border-violet-500/30 flex items-center justify-center shrink-0 text-violet-400">
+                        <Sparkles size={16} className="animate-pulse" aria-hidden="true" />
+                      </div>
+                      <p className="text-xs text-slate-200 font-medium leading-relaxed">
+                        {activeStage.teaser}
+                      </p>
+                    </div>
+                  );
+                })()}
+
+                {/* 7-Stage State-Driven Pipeline Checklist */}
+                <div className="glass-panel rounded-2xl p-4 sm:p-6 text-left space-y-3 font-mono text-xs shadow-2xl border border-white/10 max-w-lg mx-auto">
+                  <div className="flex items-center justify-between pb-2.5 border-b border-white/10 text-slate-400 font-bold text-[10px] tracking-widest uppercase">
+                    <span>InstaScore AI Pipeline 2.0</span>
+                    <span className="flex items-center gap-1.5 text-emerald-400 font-mono">
                       <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                      PROCESSANDO
+                      {processingProgress >= 100 ? "CONCLUÍDO" : "PROCESSANDO"}
                     </span>
                   </div>
 
-                  <div className="space-y-2.5 pt-1">
-                    <div className={`flex items-center gap-3 transition-all ${processingProgress >= 20 ? "text-emerald-400 font-medium" : "text-[#FF5E36] font-bold"}`}>
-                      {processingProgress >= 20 ? (
-                        <CheckCircle size={15} className="shrink-0 text-emerald-400" />
-                      ) : (
-                        <RefreshCw size={15} className="animate-spin text-[#FF5E36] shrink-0" />
-                      )}
-                      <span>Validação de capturas e sessão segura</span>
-                    </div>
+                  <div className="space-y-2 pt-1">
+                    {DIAGNOSTIC_STAGES.map((stage) => {
+                      const isCompleted = processingProgress >= stage.maxProgress;
+                      const isCurrent = processingProgress >= stage.minProgress && processingProgress < stage.maxProgress;
 
-                    <div className={`flex items-center gap-3 transition-all ${processingProgress >= 80 ? "text-emerald-400 font-medium" : processingProgress >= 20 ? "text-[#E1306C] font-bold" : "text-slate-500"}`}>
-                      {processingProgress >= 80 ? (
-                        <CheckCircle size={15} className="shrink-0 text-emerald-400" />
-                      ) : processingProgress >= 20 ? (
-                        <RefreshCw size={15} className="animate-spin text-[#E1306C] shrink-0" />
-                      ) : (
-                        <div className="w-3.5 h-3.5 rounded-full border border-slate-700 shrink-0"></div>
-                      )}
-                      <span>Visão computacional e leitura multimodal de perfil</span>
-                    </div>
-
-                    <div className={`flex items-center gap-3 transition-all ${processingProgress >= 90 ? "text-emerald-400 font-medium" : processingProgress >= 80 ? "text-[#FA26A0] font-bold" : "text-slate-500"}`}>
-                      {processingProgress >= 90 ? (
-                        <CheckCircle size={15} className="shrink-0 text-emerald-400" />
-                      ) : processingProgress >= 80 ? (
-                        <RefreshCw size={15} className="animate-spin text-[#FA26A0] shrink-0" />
-                      ) : (
-                        <div className="w-3.5 h-3.5 rounded-full border border-slate-700 shrink-0"></div>
-                      )}
-                      <span>Cálculo determinístico das 25 métricas C.A.G.E.</span>
-                    </div>
-
-                    <div className={`flex items-center gap-3 transition-all ${processingProgress >= 100 ? "text-emerald-400 font-medium" : processingProgress >= 90 ? "text-[#C084FC] font-bold" : "text-slate-500"}`}>
-                      {processingProgress >= 100 ? (
-                        <CheckCircle size={15} className="shrink-0 text-emerald-400" />
-                      ) : processingProgress >= 90 ? (
-                        <RefreshCw size={15} className="animate-spin text-[#C084FC] shrink-0" />
-                      ) : (
-                        <div className="w-3.5 h-3.5 rounded-full border border-slate-700 shrink-0"></div>
-                      )}
-                      <span>Mapeamento de prioridades e plano estratégico do OS</span>
-                    </div>
+                      return (
+                        <div 
+                          key={stage.id} 
+                          className={`flex items-center gap-3 transition-all ${
+                            isCompleted 
+                              ? "text-emerald-400 font-medium" 
+                              : isCurrent 
+                              ? "text-[#FA26A0] font-bold" 
+                              : "text-slate-500 font-normal"
+                          }`}
+                        >
+                          {isCompleted ? (
+                            <CheckCircle size={15} className="shrink-0 text-emerald-400" aria-hidden="true" />
+                          ) : isCurrent ? (
+                            <RefreshCw size={15} className="animate-spin text-[#FA26A0] shrink-0" aria-hidden="true" />
+                          ) : (
+                            <div className="w-3.5 h-3.5 rounded-full border border-slate-700 shrink-0" aria-hidden="true" />
+                          )}
+                          <span className="truncate">{stage.title}</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -1472,153 +1760,6 @@ export default function App() {
                 </p>
               </div>
             )}
-          </div>
-        )}
-
-        {/* VIEW 4: OS VIEW */}
-        {view === "result" && diagnosisResult && (
-          <div className="fixed inset-0 z-50 bg-slate-950 overflow-y-auto overflow-x-hidden md:overflow-hidden">
-            <ErrorBoundary fallbackTitle="Erro ao carregar Sistema Operacional">
-              <Suspense fallback={<LazyFallback message="Carregando Sistema Operacional..." minHeight="min-h-screen" />}>
-                <OSLayout
-                  userName={userName}
-                  handle={handle}
-                  score={diagnosisResult.scoring.score || 0}
-                  onLogout={handleReset}
-                  activeModule={activeOsModule}
-                  activeSubTab={activeDashboardTab}
-                  onNavigate={handleOsNavigate}
-                  onOpenPrivacy={() => setIsPrivacyModalOpen(true)}
-                  onOpenPlan={() => setView("my-plan")}
-                  isPro={isPro}
-                  floatingElement={
-                    activeOsModule !== "mentor" ? (
-                      <Suspense fallback={null}>
-                        <FloatingMentorWidget
-                          diagnosisResult={diagnosisResult}
-                          digitalTwin={activeDigitalTwin}
-                          userName={userName}
-                          onOpenFullMentor={() => setActiveOsModule("mentor")}
-                        />
-                      </Suspense>
-                    ) : null
-                  }
-                >
-                  {activeOsModule === "dashboard" && (
-                    <ErrorBoundary fallbackTitle="Erro ao carregar Painel de Diagnóstico">
-                      <Suspense fallback={<LazyFallback message="Carregando Auditoria C.A.G.E...." />}>
-                        <ResultView 
-                          digitalTwin={activeDigitalTwin}
-                          diagnosisResult={diagnosisResult}
-                          isDemoMode={isDemoMode}
-                          userName={userName}
-                          niche={niche}
-                          handle={handle}
-                          onReset={handleReset}
-                          onShare={() => setIsShareModalOpen(true)}
-                          activeTab={activeDashboardTab}
-                          onTabChange={setActiveDashboardTab}
-                          onNavigateToContentEngine={(opts) => {
-                            setContentEngineOptions(opts || null);
-                            handleOsNavigate("content_engine");
-                          }}
-                        />
-                      </Suspense>
-                    </ErrorBoundary>
-                  )}
-                  {activeOsModule === "benchmark" && (
-                    <ErrorBoundary fallbackTitle="Erro ao carregar Benchmark">
-                      <Suspense fallback={<LazyFallback message="Carregando Inteligência de Benchmark..." />}>
-                        <GlobalBenchmarkView
-                          digitalTwin={activeDigitalTwin}
-                          onNavigateToGrowth={() => setActiveOsModule("growth")}
-                        />
-                      </Suspense>
-                    </ErrorBoundary>
-                  )}
-                  {activeOsModule === "twin" && (
-                    <ErrorBoundary fallbackTitle="Erro ao carregar Digital Twin">
-                      <Suspense fallback={<LazyFallback message="Carregando Digital Twin..." />}>
-                        <DigitalTwinView
-                          digitalTwin={activeDigitalTwin}
-                        />
-                      </Suspense>
-                    </ErrorBoundary>
-                  )}
-                  {activeOsModule === "simulator" && (
-                    <ErrorBoundary fallbackTitle="Erro ao carregar Simulador">
-                      <Suspense fallback={<LazyFallback message="Carregando Simulador de Cenários..." />}>
-                        <SimulatorView 
-                          digitalTwin={activeDigitalTwin}
-                          diagnosisResult={diagnosisResult}
-                          currentScore={diagnosisResult.scoring.score || 0}
-                        />
-                      </Suspense>
-                    </ErrorBoundary>
-                  )}
-                  {activeOsModule === "growth" && (
-                    <ErrorBoundary fallbackTitle="Erro ao carregar Growth Center">
-                      <Suspense fallback={<LazyFallback message="Carregando Growth Center..." />}>
-                        <GrowthCenterView 
-                          diagnosisResult={diagnosisResult} 
-                          digitalTwin={activeDigitalTwin}
-                          userName={userName}
-                          handle={handle}
-                          niche={niche}
-                        />
-                      </Suspense>
-                    </ErrorBoundary>
-                  )}
-                  {activeOsModule === "mentor" && (
-                    <ErrorBoundary fallbackTitle="Erro ao carregar Mentor IA">
-                      <Suspense fallback={<LazyFallback message="Conectando com Mentor Estratégico..." />}>
-                        <MentorView 
-                          digitalTwin={activeDigitalTwin}
-                          diagnosisResult={diagnosisResult}
-                          userName={userName}
-                        />
-                      </Suspense>
-                    </ErrorBoundary>
-                  )}
-                  {activeOsModule === "history" && (
-                    <ErrorBoundary fallbackTitle="Erro ao carregar Linha do Tempo">
-                      <Suspense fallback={<LazyFallback message="Carregando Histórico e Evolução..." />}>
-                        <TimelineView 
-                          digitalTwin={activeDigitalTwin}
-                          diagnosisResult={diagnosisResult}
-                          currentScore={diagnosisResult.scoring.score || 0}
-                        />
-                      </Suspense>
-                    </ErrorBoundary>
-                  )}
-                  {activeOsModule === "content_engine" && (
-                    <ErrorBoundary fallbackTitle="Erro ao carregar InstaScore Content Engine">
-                      <Suspense fallback={<LazyFallback message="Inicializando Content Engine C.A.G.E...." />}>
-                        <ContentEngineView 
-                          diagnosisResult={diagnosisResult}
-                          startModeResult={startModeResult}
-                          digitalTwin={activeDigitalTwin}
-                          isPro={isPro}
-                          initialOptions={contentEngineOptions}
-                          onOpenPaywall={(reason) => openPaywall(reason)}
-                          onNavigateToLibrary={() => handleOsNavigate("content_library")}
-                        />
-                      </Suspense>
-                    </ErrorBoundary>
-                  )}
-                  {activeOsModule === "content_library" && (
-                    <ErrorBoundary fallbackTitle="Erro ao carregar Biblioteca de Conteúdo">
-                      <Suspense fallback={<LazyFallback message="Carregando Biblioteca de Conteúdo..." />}>
-                        <ContentLibraryView 
-                          isPro={isPro}
-                          onNavigateToCreate={() => handleOsNavigate("content_engine")}
-                        />
-                      </Suspense>
-                    </ErrorBoundary>
-                  )}
-                </OSLayout>
-              </Suspense>
-            </ErrorBoundary>
           </div>
         )}
 

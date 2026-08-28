@@ -182,13 +182,13 @@ export function ResultView({
 
   return (
     <motion.div 
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.8, ease: "easeOut" }}
-      className="space-y-12 max-w-5xl mx-auto"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.3, ease: "easeOut" }}
+      className="space-y-8 sm:space-y-10 max-w-5xl mx-auto w-full min-w-0"
     >
       {/* Gamification OS Status Header */}
-      <div className="flex items-center justify-between glass-panel rounded-2xl p-4.5 mb-6 shadow-2xl border border-white/10 backdrop-blur-2xl">
+      <div className="flex items-center justify-between glass-panel rounded-2xl p-4.5 shadow-2xl border border-white/10 backdrop-blur-2xl">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-[#FF5E36] via-[#E1306C] to-[#833AB4] p-0.5 shadow-[0_0_20px_rgba(225,48,108,0.4)]">
             <div className="w-full h-full bg-[#080B14] rounded-2xl flex items-center justify-center font-black text-white text-sm font-mono">

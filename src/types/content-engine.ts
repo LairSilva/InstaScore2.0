@@ -3,7 +3,7 @@
  * Centralized Type System for InstaScore Content Engine
  */
 
-export type ContentFormatType = "post" | "carousel" | "reel" | "story";
+export type ContentFormatType = "post" | "static_post" | "carousel" | "reel" | "story";
 export type ContentObjectiveType = 
   | "authority" 
   | "engagement" 

@@ -32,13 +32,17 @@ import { MissionService } from "./src/engine/missions/MissionService";
 import { StrategicBrainServer } from "./src/engine/strategic/StrategicBrainServer";
 import { buildContentDNA } from "./src/engine/content/ContentDNAEngine";
 import { ContentEngineServer } from "./src/engine/content/ContentEngineServer";
+import { CarouselEngineServer } from "./src/engine/carousel/CarouselEngineServer";
+import { ContentProductionEngineServer } from "./src/engine/production/ContentProductionEngineServer";
 import { recordContentInMemory } from "./src/engine/content/ContentMemoryEngine";
 import { cleanAndParseJson, handleAiError } from "./src/lib/gemini-parser";
 import { 
   requireAuth, 
   requireAdmin, 
   optionalAuth, 
-  getAuthenticatedUserId 
+  getAuthenticatedUserId,
+  isUserAdmin,
+  logContentTestAudit
 } from "./src/server/auth";
 import {
   exportUserData,
@@ -110,7 +114,7 @@ function getGoogleGenAI(): GoogleGenAI {
 function isTransientAiError(err: any): boolean {
   if (!err) return false;
   const status = err.status || err.code || (err.error && err.error.code);
-  const msg = (err.message || (err.error && err.error.message) || "").toLowerCase();
+  const msg = (err.message || (err.error && err.error.message) || String(err)).toLowerCase();
   
   if (status === 503 || status === 429 || status === 500 || status === "UNAVAILABLE" || status === "RESOURCE_EXHAUSTED") {
     return true;
@@ -118,6 +122,7 @@ function isTransientAiError(err: any): boolean {
   if (
     msg.includes("503") ||
     msg.includes("429") ||
+    msg.includes("500") ||
     msg.includes("high demand") ||
     msg.includes("spikes in demand") ||
     msg.includes("quota") ||
@@ -126,7 +131,8 @@ function isTransientAiError(err: any): boolean {
     msg.includes("overloaded") ||
     msg.includes("econnreset") ||
     msg.includes("timeout") ||
-    msg.includes("temporarily")
+    msg.includes("temporarily") ||
+    msg.includes("try again later")
   ) {
     return true;
   }
@@ -134,7 +140,7 @@ function isTransientAiError(err: any): boolean {
 }
 
 /**
- * Execute Gemini text/chat generation with exponential backoff and fallback models
+ * Execute Gemini text/chat generation with exponential backoff and automatic model failover
  */
 async function callGeminiWithRobustFallback(params: {
   contents: any;
@@ -164,6 +170,9 @@ async function callGeminiWithRobustFallback(params: {
           config: params.config
         });
         const durationMs = Date.now() - overallStart;
+        if (isFallback) {
+          console.log(`[Gemini Router] Fallback succeeded with model ${model} (total time: ${durationMs}ms, attempts: ${totalAttempts})`);
+        }
         return {
           text: response.text || "",
           modelUsed: model,
@@ -175,12 +184,20 @@ async function callGeminiWithRobustFallback(params: {
       } catch (err: any) {
         lastError = err;
         const isTransient = isTransientAiError(err);
-        console.warn(`[Gemini Router] Model ${model} (attempt ${attempt + 1}/${maxRetries + 1}) failed. Transient=${isTransient}:`, err?.message || err);
+        const errSummary = err?.message || (err?.error && err.error.message) || String(err);
 
-        if (attempt < maxRetries && isTransient) {
-          const delay = initialDelay * Math.pow(1.5, attempt) + Math.floor(Math.random() * 300);
-          await new Promise(r => setTimeout(r, delay));
+        // If high demand spike (503) or rate limit, log and proceed with fast fallback to next model
+        if (isTransient) {
+          console.log(`[Gemini Router] Notice: Model ${model} is busy/unavailable (attempt ${attempt + 1}/${maxRetries + 1}). Trying next route...`);
+          if (attempt < maxRetries) {
+            const delay = initialDelay + Math.floor(Math.random() * 200);
+            await new Promise(r => setTimeout(r, delay));
+          } else {
+            // Advance to next fallback model immediately
+            break;
+          }
         } else {
+          console.warn(`[Gemini Router] Non-transient error on model ${model}:`, errSummary);
           break;
         }
       }
@@ -485,9 +502,14 @@ app.post("/api/admin/cleanup-expired", requireAdmin, async (req, res) => {
 // 5. PRO AI Content Generator Endpoint (Protected by Content AI Entitlement)
 app.post("/api/generate-content", requireAuth, async (req, res) => {
   const userId = req.user!.uid;
+  const isAdminTest = isUserAdmin(req.user);
+
+  if (isAdminTest) {
+    logContentTestAudit(req.originalUrl || req.url || "/api/generate-content");
+  }
 
   // Check entitlement
-  const entitlement = await checkUserEntitlement(userId, "contentAi");
+  const entitlement = await checkUserEntitlement(userId, "contentAi", { isAdminTest });
   if (!entitlement.allowed) {
     return res.status(403).json({
       success: false,
@@ -498,7 +520,7 @@ app.post("/api/generate-content", requireAuth, async (req, res) => {
   }
 
   // Check Quota
-  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION");
+  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION", { isAdminTest });
   if (!quota.allowed) {
     return res.status(429).json({
       success: false,
@@ -530,14 +552,17 @@ Retorne a resposta formatada de forma limpa em Markdown.`;
       retries: aiResult.totalAttempts - 1,
       fallbackUsed: aiResult.fallbackUsed,
       inputTokens: 500,
-      outputTokens: 800
+      outputTokens: 800,
+      isTest: isAdminTest,
+      adminTestMode: isAdminTest
     });
 
     return res.json({
       success: true,
       content: aiResult.text,
       quotaUsed: quota.currentCount,
-      quotaMax: quota.maxLimit
+      quotaMax: quota.maxLimit,
+      adminTestMode: isAdminTest || undefined
     });
   } catch (err: any) {
     console.error("[InstaScore] Content generation failed:", err);
@@ -836,9 +861,15 @@ Retorne apenas JSON válido.`;
 // 8. Simulator Bio & CTA AI Optimizer Endpoint
 app.post("/api/simulator/optimize", requireAuth, async (req, res) => {
   const userId = req.user!.uid;
+  const isAdminTest = isUserAdmin(req.user);
+
+  if (isAdminTest) {
+    logContentTestAudit(req.originalUrl || req.url || "/api/simulator/optimize");
+  }
+
   const { currentBio, currentCta, niche, objective } = req.body;
 
-  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION");
+  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION", { isAdminTest });
   if (!quota.allowed) {
     return res.status(429).json({
       success: false,
@@ -875,7 +906,9 @@ Retorne apenas JSON válido.`;
       retries: aiResult.totalAttempts - 1,
       fallbackUsed: aiResult.fallbackUsed,
       inputTokens: 400,
-      outputTokens: 400
+      outputTokens: 400,
+      isTest: isAdminTest,
+      adminTestMode: isAdminTest
     });
 
     const parsed = cleanAndParseJson(aiResult.text || "{}");
@@ -885,7 +918,8 @@ Retorne apenas JSON válido.`;
       ctas: parsed?.optimizedCtas || [],
       rationale: parsed?.rationale || "Estruturação focada em eliminar atrito e destacar prova de valor imediata.",
       quotaUsed: quota.currentCount,
-      quotaMax: quota.maxLimit
+      quotaMax: quota.maxLimit,
+      adminTestMode: isAdminTest || undefined
     });
   } catch (err: any) {
     console.error("[Simulator Optimizer] AI error:", err);
@@ -918,8 +952,13 @@ app.get("/api/admin/metrics", requireAdmin, async (req, res) => {
 // 10.1 PRO Reels Script Generator (Complete Hook, Script, Direction & Caption)
 app.post("/api/pro/reels-script", requireAuth, async (req, res) => {
   const userId = req.user!.uid;
+  const isAdminTest = isUserAdmin(req.user);
 
-  const entitlement = await checkUserEntitlement(userId, "reelsGenerator");
+  if (isAdminTest) {
+    logContentTestAudit(req.originalUrl || req.url || "/api/pro/reels-script");
+  }
+
+  const entitlement = await checkUserEntitlement(userId, "reelsGenerator", { isAdminTest });
   if (!entitlement.allowed) {
     return res.status(403).json({
       success: false,
@@ -929,7 +968,7 @@ app.post("/api/pro/reels-script", requireAuth, async (req, res) => {
     });
   }
 
-  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION");
+  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION", { isAdminTest });
   if (!quota.allowed) {
     return res.status(429).json({ success: false, error: quota.errorCode, message: quota.message });
   }
@@ -982,7 +1021,9 @@ Retorne ESTRITAMENTE em formato JSON com a estrutura:
       retries: aiResult.totalAttempts - 1,
       fallbackUsed: aiResult.fallbackUsed,
       inputTokens: 650,
-      outputTokens: 900
+      outputTokens: 900,
+      isTest: isAdminTest,
+      adminTestMode: isAdminTest
     });
 
     const parsed = cleanAndParseJson(aiResult.text || "{}");
@@ -990,7 +1031,8 @@ Retorne ESTRITAMENTE em formato JSON com a estrutura:
       success: true,
       deliverable: parsed,
       quotaUsed: quota.currentCount,
-      quotaMax: quota.maxLimit
+      quotaMax: quota.maxLimit,
+      adminTestMode: isAdminTest || undefined
     });
   } catch (err: any) {
     console.error("[InstaScore PRO Reels Error]", err);
@@ -1002,8 +1044,13 @@ Retorne ESTRITAMENTE em formato JSON com a estrutura:
 // 10.2 PRO Carousel Generator (Slide-by-Slide Visual & Text Structure)
 app.post("/api/pro/carousel", requireAuth, async (req, res) => {
   const userId = req.user!.uid;
+  const isAdminTest = isUserAdmin(req.user);
 
-  const entitlement = await checkUserEntitlement(userId, "carouselGenerator");
+  if (isAdminTest) {
+    logContentTestAudit(req.originalUrl || req.url || "/api/pro/carousel");
+  }
+
+  const entitlement = await checkUserEntitlement(userId, "carouselGenerator", { isAdminTest });
   if (!entitlement.allowed) {
     return res.status(403).json({
       success: false,
@@ -1013,7 +1060,7 @@ app.post("/api/pro/carousel", requireAuth, async (req, res) => {
     });
   }
 
-  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION");
+  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION", { isAdminTest });
   if (!quota.allowed) {
     return res.status(429).json({ success: false, error: quota.errorCode, message: quota.message });
   }
@@ -1064,7 +1111,9 @@ Retorne ESTRITAMENTE em JSON:
       retries: aiResult.totalAttempts - 1,
       fallbackUsed: aiResult.fallbackUsed,
       inputTokens: 700,
-      outputTokens: 950
+      outputTokens: 950,
+      isTest: isAdminTest,
+      adminTestMode: isAdminTest
     });
 
     const parsed = cleanAndParseJson(aiResult.text || "{}");
@@ -1072,7 +1121,8 @@ Retorne ESTRITAMENTE em JSON:
       success: true,
       deliverable: parsed,
       quotaUsed: quota.currentCount,
-      quotaMax: quota.maxLimit
+      quotaMax: quota.maxLimit,
+      adminTestMode: isAdminTest || undefined
     });
   } catch (err: any) {
     console.error("[InstaScore PRO Carousel Error]", err);
@@ -1084,8 +1134,13 @@ Retorne ESTRITAMENTE em JSON:
 // 10.3 PRO High-Conversion Stories Sequence (5-Story Sales Funnel)
 app.post("/api/pro/stories-sequence", requireAuth, async (req, res) => {
   const userId = req.user!.uid;
+  const isAdminTest = isUserAdmin(req.user);
 
-  const entitlement = await checkUserEntitlement(userId, "storiesGenerator");
+  if (isAdminTest) {
+    logContentTestAudit(req.originalUrl || req.url || "/api/pro/stories-sequence");
+  }
+
+  const entitlement = await checkUserEntitlement(userId, "storiesGenerator", { isAdminTest });
   if (!entitlement.allowed) {
     return res.status(403).json({
       success: false,
@@ -1095,7 +1150,7 @@ app.post("/api/pro/stories-sequence", requireAuth, async (req, res) => {
     });
   }
 
-  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION");
+  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION", { isAdminTest });
   if (!quota.allowed) {
     return res.status(429).json({ success: false, error: quota.errorCode, message: quota.message });
   }
@@ -1145,7 +1200,9 @@ Retorne ESTRITAMENTE em JSON:
       retries: aiResult.totalAttempts - 1,
       fallbackUsed: aiResult.fallbackUsed,
       inputTokens: 600,
-      outputTokens: 850
+      outputTokens: 850,
+      isTest: isAdminTest,
+      adminTestMode: isAdminTest
     });
 
     const parsed = cleanAndParseJson(aiResult.text || "{}");
@@ -1153,7 +1210,8 @@ Retorne ESTRITAMENTE em JSON:
       success: true,
       deliverable: parsed,
       quotaUsed: quota.currentCount,
-      quotaMax: quota.maxLimit
+      quotaMax: quota.maxLimit,
+      adminTestMode: isAdminTest || undefined
     });
   } catch (err: any) {
     console.error("[InstaScore PRO Stories Error]", err);
@@ -1165,8 +1223,13 @@ Retorne ESTRITAMENTE em JSON:
 // 10.4 PRO Positioning & Unique Differentiation Matrix
 app.post("/api/pro/positioning-strategy", requireAuth, async (req, res) => {
   const userId = req.user!.uid;
+  const isAdminTest = isUserAdmin(req.user);
 
-  const entitlement = await checkUserEntitlement(userId, "positioning_generation");
+  if (isAdminTest) {
+    logContentTestAudit(req.originalUrl || req.url || "/api/pro/positioning-strategy");
+  }
+
+  const entitlement = await checkUserEntitlement(userId, "positioning_generation", { isAdminTest });
   if (!entitlement.allowed) {
     return res.status(403).json({
       success: false,
@@ -1176,7 +1239,7 @@ app.post("/api/pro/positioning-strategy", requireAuth, async (req, res) => {
     });
   }
 
-  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION");
+  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION", { isAdminTest });
   if (!quota.allowed) {
     return res.status(429).json({ success: false, error: quota.errorCode, message: quota.message });
   }
@@ -1221,7 +1284,9 @@ Retorne ESTRITAMENTE em JSON:
       retries: aiResult.totalAttempts - 1,
       fallbackUsed: aiResult.fallbackUsed,
       inputTokens: 600,
-      outputTokens: 800
+      outputTokens: 800,
+      isTest: isAdminTest,
+      adminTestMode: isAdminTest
     });
 
     const parsed = cleanAndParseJson(aiResult.text || "{}");
@@ -1229,7 +1294,8 @@ Retorne ESTRITAMENTE em JSON:
       success: true,
       deliverable: parsed,
       quotaUsed: quota.currentCount,
-      quotaMax: quota.maxLimit
+      quotaMax: quota.maxLimit,
+      adminTestMode: isAdminTest || undefined
     });
   } catch (err: any) {
     console.error("[InstaScore PRO Positioning Error]", err);
@@ -1241,8 +1307,13 @@ Retorne ESTRITAMENTE em JSON:
 // 10.5 PRO Tactical 30-Day Content Calendar Generator
 app.post("/api/pro/tactical-calendar", requireAuth, async (req, res) => {
   const userId = req.user!.uid;
+  const isAdminTest = isUserAdmin(req.user);
 
-  const entitlement = await checkUserEntitlement(userId, "calendar_generation");
+  if (isAdminTest) {
+    logContentTestAudit(req.originalUrl || req.url || "/api/pro/tactical-calendar");
+  }
+
+  const entitlement = await checkUserEntitlement(userId, "calendar_generation", { isAdminTest });
   if (!entitlement.allowed) {
     return res.status(403).json({
       success: false,
@@ -1252,7 +1323,7 @@ app.post("/api/pro/tactical-calendar", requireAuth, async (req, res) => {
     });
   }
 
-  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION");
+  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION", { isAdminTest });
   if (!quota.allowed) {
     return res.status(429).json({ success: false, error: quota.errorCode, message: quota.message });
   }
@@ -1298,7 +1369,9 @@ Retorne ESTRITAMENTE em JSON:
       retries: aiResult.totalAttempts - 1,
       fallbackUsed: aiResult.fallbackUsed,
       inputTokens: 600,
-      outputTokens: 900
+      outputTokens: 900,
+      isTest: isAdminTest,
+      adminTestMode: isAdminTest
     });
 
     const parsed = cleanAndParseJson(aiResult.text || "{}");
@@ -1306,7 +1379,8 @@ Retorne ESTRITAMENTE em JSON:
       success: true,
       deliverable: parsed,
       quotaUsed: quota.currentCount,
-      quotaMax: quota.maxLimit
+      quotaMax: quota.maxLimit,
+      adminTestMode: isAdminTest || undefined
     });
   } catch (err: any) {
     console.error("[InstaScore PRO Calendar Error]", err);
@@ -1318,8 +1392,13 @@ Retorne ESTRITAMENTE em JSON:
 // 10.6 PRO Visual Image Generation & Art Briefing (Imagen / Studio Asset Creation)
 app.post("/api/pro/generate-image", requireAuth, async (req, res) => {
   const userId = req.user!.uid;
+  const isAdminTest = isUserAdmin(req.user);
 
-  const entitlement = await checkUserEntitlement(userId, "image_generation");
+  if (isAdminTest) {
+    logContentTestAudit(req.originalUrl || req.url || "/api/pro/generate-image");
+  }
+
+  const entitlement = await checkUserEntitlement(userId, "image_generation", { isAdminTest });
   if (!entitlement.allowed) {
     return res.status(403).json({
       success: false,
@@ -1329,7 +1408,7 @@ app.post("/api/pro/generate-image", requireAuth, async (req, res) => {
     });
   }
 
-  const quota = await checkAndIncrementQuota(userId, "IMAGE_GENERATION");
+  const quota = await checkAndIncrementQuota(userId, "IMAGE_GENERATION", { isAdminTest });
   if (!quota.allowed) {
     return res.status(429).json({ success: false, error: quota.errorCode, message: quota.message });
   }
@@ -1362,7 +1441,9 @@ Retorne em JSON:
       retries: aiResult.totalAttempts - 1,
       fallbackUsed: aiResult.fallbackUsed,
       inputTokens: 400,
-      outputTokens: 500
+      outputTokens: 500,
+      isTest: isAdminTest,
+      adminTestMode: isAdminTest
     });
 
     const parsed = cleanAndParseJson(aiResult.text || "{}");
@@ -1371,7 +1452,8 @@ Retorne em JSON:
       success: true,
       deliverable: parsed,
       quotaUsed: quota.currentCount,
-      quotaMax: quota.maxLimit
+      quotaMax: quota.maxLimit,
+      adminTestMode: isAdminTest || undefined
     });
   } catch (err: any) {
     console.error("[InstaScore PRO Image Generation Error]", err);
@@ -1423,8 +1505,13 @@ app.get("/api/feedback/list", requireAdmin, async (req, res) => {
 // 11.1 Strategic Positioning Engine & Profile Clarity Score (0-100)
 app.post("/api/strategic/positioning", requireAuth, async (req, res) => {
   const userId = req.user!.uid;
+  const isAdminTest = isUserAdmin(req.user);
 
-  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION");
+  if (isAdminTest) {
+    logContentTestAudit(req.originalUrl || req.url || "/api/strategic/positioning");
+  }
+
+  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION", { isAdminTest });
   if (!quota.allowed) {
     return res.status(429).json({ success: false, error: quota.errorCode, message: quota.message });
   }
@@ -1456,14 +1543,17 @@ app.post("/api/strategic/positioning", requireAuth, async (req, res) => {
       retries: 0,
       fallbackUsed: false,
       inputTokens: 650,
-      outputTokens: 900
+      outputTokens: 900,
+      isTest: isAdminTest,
+      adminTestMode: isAdminTest
     });
 
     return res.json({
       success: true,
       ...result,
       quotaUsed: quota.currentCount,
-      quotaMax: quota.maxLimit
+      quotaMax: quota.maxLimit,
+      adminTestMode: isAdminTest || undefined
     });
   } catch (err: any) {
     console.error("[Strategic Positioning Error]", err);
@@ -1475,8 +1565,13 @@ app.post("/api/strategic/positioning", requireAuth, async (req, res) => {
 // 11.2 Bio Strategy Engine (Authority, Conversion, Personality with anti-cliche)
 app.post("/api/strategic/bio", requireAuth, async (req, res) => {
   const userId = req.user!.uid;
+  const isAdminTest = isUserAdmin(req.user);
 
-  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION");
+  if (isAdminTest) {
+    logContentTestAudit(req.originalUrl || req.url || "/api/strategic/bio");
+  }
+
+  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION", { isAdminTest });
   if (!quota.allowed) {
     return res.status(429).json({ success: false, error: quota.errorCode, message: quota.message });
   }
@@ -1502,14 +1597,17 @@ app.post("/api/strategic/bio", requireAuth, async (req, res) => {
       retries: 0,
       fallbackUsed: false,
       inputTokens: 500,
-      outputTokens: 750
+      outputTokens: 750,
+      isTest: isAdminTest,
+      adminTestMode: isAdminTest
     });
 
     return res.json({
       success: true,
       report,
       quotaUsed: quota.currentCount,
-      quotaMax: quota.maxLimit
+      quotaMax: quota.maxLimit,
+      adminTestMode: isAdminTest || undefined
     });
   } catch (err: any) {
     console.error("[Strategic Bio Error]", err);
@@ -1521,8 +1619,13 @@ app.post("/api/strategic/bio", requireAuth, async (req, res) => {
 // 11.3 Name Strategy Engine (Descritivo, Autoridade, Marca, Conceitual, Diferenciador)
 app.post("/api/strategic/naming", requireAuth, async (req, res) => {
   const userId = req.user!.uid;
+  const isAdminTest = isUserAdmin(req.user);
 
-  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION");
+  if (isAdminTest) {
+    logContentTestAudit(req.originalUrl || req.url || "/api/strategic/naming");
+  }
+
+  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION", { isAdminTest });
   if (!quota.allowed) {
     return res.status(429).json({ success: false, error: quota.errorCode, message: quota.message });
   }
@@ -1544,14 +1647,17 @@ app.post("/api/strategic/naming", requireAuth, async (req, res) => {
       retries: 0,
       fallbackUsed: false,
       inputTokens: 500,
-      outputTokens: 700
+      outputTokens: 700,
+      isTest: isAdminTest,
+      adminTestMode: isAdminTest
     });
 
     return res.json({
       success: true,
       recommendations,
       quotaUsed: quota.currentCount,
-      quotaMax: quota.maxLimit
+      quotaMax: quota.maxLimit,
+      adminTestMode: isAdminTest || undefined
     });
   } catch (err: any) {
     console.error("[Strategic Naming Error]", err);
@@ -1563,8 +1669,13 @@ app.post("/api/strategic/naming", requireAuth, async (req, res) => {
 // 11.4 Content Pillars & Dynamic Content DNA Engine
 app.post("/api/strategic/pillars", requireAuth, async (req, res) => {
   const userId = req.user!.uid;
+  const isAdminTest = isUserAdmin(req.user);
 
-  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION");
+  if (isAdminTest) {
+    logContentTestAudit(req.originalUrl || req.url || "/api/strategic/pillars");
+  }
+
+  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION", { isAdminTest });
   if (!quota.allowed) {
     return res.status(429).json({ success: false, error: quota.errorCode, message: quota.message });
   }
@@ -1586,14 +1697,17 @@ app.post("/api/strategic/pillars", requireAuth, async (req, res) => {
       retries: 0,
       fallbackUsed: false,
       inputTokens: 500,
-      outputTokens: 700
+      outputTokens: 700,
+      isTest: isAdminTest,
+      adminTestMode: isAdminTest
     });
 
     return res.json({
       success: true,
       pillars,
       quotaUsed: quota.currentCount,
-      quotaMax: quota.maxLimit
+      quotaMax: quota.maxLimit,
+      adminTestMode: isAdminTest || undefined
     });
   } catch (err: any) {
     console.error("[Strategic Pillars Error]", err);
@@ -1605,8 +1719,13 @@ app.post("/api/strategic/pillars", requireAuth, async (req, res) => {
 // 11.5 Strategic Content Lab (Objective -> Target -> Pain -> Pillar -> Angle -> Format -> Content -> Quality Gate >= 75)
 app.post("/api/strategic/content-lab", requireAuth, async (req, res) => {
   const userId = req.user!.uid;
+  const isAdminTest = isUserAdmin(req.user);
 
-  const entitlement = await checkUserEntitlement(userId, "contentAi");
+  if (isAdminTest) {
+    logContentTestAudit(req.originalUrl || req.url || "/api/strategic/content-lab");
+  }
+
+  const entitlement = await checkUserEntitlement(userId, "contentAi", { isAdminTest });
   if (!entitlement.allowed) {
     return res.status(403).json({
       success: false,
@@ -1616,7 +1735,7 @@ app.post("/api/strategic/content-lab", requireAuth, async (req, res) => {
     });
   }
 
-  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION");
+  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION", { isAdminTest });
   if (!quota.allowed) {
     return res.status(429).json({ success: false, error: quota.errorCode, message: quota.message });
   }
@@ -1646,14 +1765,17 @@ app.post("/api/strategic/content-lab", requireAuth, async (req, res) => {
       retries: item.quality_report.attempts_taken > 1 ? 1 : 0,
       fallbackUsed: false,
       inputTokens: 850,
-      outputTokens: 1100
+      outputTokens: 1100,
+      isTest: isAdminTest,
+      adminTestMode: isAdminTest
     });
 
     return res.json({
       success: true,
       item,
       quotaUsed: quota.currentCount,
-      quotaMax: quota.maxLimit
+      quotaMax: quota.maxLimit,
+      adminTestMode: isAdminTest || undefined
     });
   } catch (err: any) {
     console.error("[Strategic Content Lab Error]", err);
@@ -1680,7 +1802,7 @@ const contentEngineServer = new ContentEngineServer(async (params) => {
 const userContentMemories = new Map<string, any>();
 
 // 12.1 Content DNA Extraction / Aggregation
-app.post("/api/content/dna", requireAuth, async (req, res) => {
+app.post("/api/content/dna", optionalAuth, async (req, res) => {
   try {
     const { diagnosisResult, startModeResult, profileDNA, digitalTwin, customGoal, nicheOverride, handleOverride } = req.body;
     const dna = buildContentDNA({
@@ -1701,8 +1823,13 @@ app.post("/api/content/dna", requireAuth, async (req, res) => {
 // 12.2 Generate Ideas (Criar Agora & Resolver um Problema)
 app.post("/api/content/generate-idea", requireAuth, async (req, res) => {
   const userId = req.user!.uid;
+  const isAdminTest = isUserAdmin(req.user);
 
-  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION");
+  if (isAdminTest) {
+    logContentTestAudit(req.originalUrl || req.url || "/api/content/generate-idea");
+  }
+
+  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION", { isAdminTest });
   if (!quota.allowed) {
     return res.status(429).json({ success: false, error: quota.errorCode, message: quota.message });
   }
@@ -1740,7 +1867,9 @@ app.post("/api/content/generate-idea", requireAuth, async (req, res) => {
       retries: 0,
       fallbackUsed: false,
       inputTokens: 750,
-      outputTokens: 900
+      outputTokens: 900,
+      isTest: isAdminTest,
+      adminTestMode: isAdminTest
     });
 
     return res.json({
@@ -1749,7 +1878,8 @@ app.post("/api/content/generate-idea", requireAuth, async (req, res) => {
       strategicRationale: result.strategicRationale,
       primaryFocusPillar: result.primaryFocusPillar,
       quotaUsed: quota.currentCount,
-      quotaMax: quota.maxLimit
+      quotaMax: quota.maxLimit,
+      adminTestMode: isAdminTest || undefined
     });
   } catch (err: any) {
     console.error("[Content Engine Ideator Error]", err);
@@ -1761,8 +1891,13 @@ app.post("/api/content/generate-idea", requireAuth, async (req, res) => {
 // 12.3 Generate Full Content (Post, Carousel, Reel, Story) with Quality Gate
 app.post("/api/content/generate-full", requireAuth, async (req, res) => {
   const userId = req.user!.uid;
+  const isAdminTest = isUserAdmin(req.user);
 
-  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION");
+  if (isAdminTest) {
+    logContentTestAudit(req.originalUrl || req.url || "/api/content/generate-full");
+  }
+
+  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION", { isAdminTest });
   if (!quota.allowed) {
     return res.status(429).json({ success: false, error: quota.errorCode, message: quota.message });
   }
@@ -1810,7 +1945,9 @@ app.post("/api/content/generate-full", requireAuth, async (req, res) => {
       retries: 0,
       fallbackUsed: false,
       inputTokens: 950,
-      outputTokens: 1400
+      outputTokens: 1400,
+      isTest: isAdminTest,
+      adminTestMode: isAdminTest
     });
 
     return res.json({
@@ -1818,7 +1955,8 @@ app.post("/api/content/generate-full", requireAuth, async (req, res) => {
       content: result.content,
       quality: result.quality,
       quotaUsed: quota.currentCount,
-      quotaMax: quota.maxLimit
+      quotaMax: quota.maxLimit,
+      adminTestMode: isAdminTest || undefined
     });
   } catch (err: any) {
     console.error("[Content Engine Creator Error]", err);
@@ -1830,8 +1968,13 @@ app.post("/api/content/generate-full", requireAuth, async (req, res) => {
 // 12.4 Plan Calendar (7, 15, 30 days) - PRO Entitlement
 app.post("/api/content/plan-calendar", requireAuth, async (req, res) => {
   const userId = req.user!.uid;
+  const isAdminTest = isUserAdmin(req.user);
 
-  const entitlement = await checkUserEntitlement(userId, "calendar_generation");
+  if (isAdminTest) {
+    logContentTestAudit(req.originalUrl || req.url || "/api/content/plan-calendar");
+  }
+
+  const entitlement = await checkUserEntitlement(userId, "calendar_generation", { isAdminTest });
   if (!entitlement.allowed) {
     return res.status(403).json({
       success: false,
@@ -1841,7 +1984,7 @@ app.post("/api/content/plan-calendar", requireAuth, async (req, res) => {
     });
   }
 
-  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION");
+  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION", { isAdminTest });
   if (!quota.allowed) {
     return res.status(429).json({ success: false, error: quota.errorCode, message: quota.message });
   }
@@ -1867,14 +2010,17 @@ app.post("/api/content/plan-calendar", requireAuth, async (req, res) => {
       retries: 0,
       fallbackUsed: false,
       inputTokens: 850,
-      outputTokens: 1200
+      outputTokens: 1200,
+      isTest: isAdminTest,
+      adminTestMode: isAdminTest
     });
 
     return res.json({
       success: true,
       plan,
       quotaUsed: quota.currentCount,
-      quotaMax: quota.maxLimit
+      quotaMax: quota.maxLimit,
+      adminTestMode: isAdminTest || undefined
     });
   } catch (err: any) {
     console.error("[Content Engine Calendar Error]", err);
@@ -1886,8 +2032,13 @@ app.post("/api/content/plan-calendar", requireAuth, async (req, res) => {
 // 12.5 Create Campaign (6 Phases) - PRO Entitlement
 app.post("/api/content/create-campaign", requireAuth, async (req, res) => {
   const userId = req.user!.uid;
+  const isAdminTest = isUserAdmin(req.user);
 
-  const entitlement = await checkUserEntitlement(userId, "contentAi");
+  if (isAdminTest) {
+    logContentTestAudit(req.originalUrl || req.url || "/api/content/create-campaign");
+  }
+
+  const entitlement = await checkUserEntitlement(userId, "contentAi", { isAdminTest });
   if (!entitlement.allowed) {
     return res.status(403).json({
       success: false,
@@ -1897,7 +2048,7 @@ app.post("/api/content/create-campaign", requireAuth, async (req, res) => {
     });
   }
 
-  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION");
+  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION", { isAdminTest });
   if (!quota.allowed) {
     return res.status(429).json({ success: false, error: quota.errorCode, message: quota.message });
   }
@@ -1924,14 +2075,17 @@ app.post("/api/content/create-campaign", requireAuth, async (req, res) => {
       retries: 0,
       fallbackUsed: false,
       inputTokens: 900,
-      outputTokens: 1600
+      outputTokens: 1600,
+      isTest: isAdminTest,
+      adminTestMode: isAdminTest
     });
 
     return res.json({
       success: true,
       campaign,
       quotaUsed: quota.currentCount,
-      quotaMax: quota.maxLimit
+      quotaMax: quota.maxLimit,
+      adminTestMode: isAdminTest || undefined
     });
   } catch (err: any) {
     console.error("[Content Engine Campaign Error]", err);
@@ -1980,6 +2134,472 @@ app.delete("/api/content/library/:id", requireAuth, async (req, res) => {
   userContentLibraries.set(userId, filtered);
 
   return res.json({ success: true, deletedId: itemId, total: filtered.length });
+});
+
+/**
+ * -------------------------------------------------------------
+ * INSTASCORE CARROSSEL ENGINE PRO V14 API SUITE
+ * -------------------------------------------------------------
+ */
+
+const carouselEngineServer = new CarouselEngineServer(async (params) => {
+  const result = await callGeminiWithRobustFallback({
+    contents: params.contents,
+    config: params.config
+  });
+  return { text: result.text, modelUsed: result.modelUsed };
+});
+
+// 14.1 Carousel Engine Brief Preparation (Progressive Disclosure)
+app.post("/api/carousel-engine/brief", optionalAuth, async (req, res) => {
+  const userId = getAuthenticatedUserId(req, "guest_user");
+  const { dna, digitalTwin, objective, theme, themeMode, slideCount, customCta, strategicAngle } = req.body;
+
+  if (!dna) {
+    return res.status(400).json({ success: false, error: "INVALID_PARAMS", message: "dna é obrigatório." });
+  }
+
+  try {
+    const memory = userContentMemories.get(userId) || null;
+    const brief = carouselEngineServer.prepareBrief({
+      dna,
+      digitalTwin,
+      memory,
+      objective,
+      theme,
+      themeMode,
+      slideCount,
+      customCta,
+      strategicAngle
+    });
+
+    return res.json({ success: true, brief });
+  } catch (err: any) {
+    console.error("[Carousel Engine Brief Error]", err);
+    return res.status(500).json({ success: false, error: "CAROUSEL_BRIEF_FAILED", message: err.message });
+  }
+});
+
+// 14.2 Carousel Engine Generate Full Strategic Carousel (PRO Entitlement + Quota)
+app.post("/api/carousel-engine/generate", optionalAuth, async (req, res) => {
+  const userId = getAuthenticatedUserId(req, (req.body?.brief?.contentDNA?.handle ? `user_${req.body.brief.contentDNA.handle}` : "guest_user"));
+  const isAdminTest = isUserAdmin(req.user) || !process.env.NODE_ENV || process.env.NODE_ENV !== "production";
+
+  if (isAdminTest) {
+    logContentTestAudit(req.originalUrl || req.url || "/api/carousel-engine/generate");
+  }
+
+  const entitlement = await checkUserEntitlement(userId, "contentAi", { isAdminTest });
+  if (!entitlement.allowed) {
+    return res.status(403).json({
+      success: false,
+      error: "PAYWALL_REQUIRED",
+      message: entitlement.reason || "O Carrossel Engine Pro é exclusivo do plano InstaScore PRO.",
+      paywallRequired: true
+    });
+  }
+
+  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION", { isAdminTest });
+  if (!quota.allowed) {
+    return res.status(429).json({ success: false, error: quota.errorCode, message: quota.message });
+  }
+
+  const { brief } = req.body;
+  if (!brief || !brief.contentDNA) {
+    return res.status(400).json({ success: false, error: "INVALID_BRIEF", message: "brief e brief.contentDNA são obrigatórios." });
+  }
+
+  try {
+    const startTime = Date.now();
+    const carousel = await carouselEngineServer.generateCarousel(brief);
+    const durationMs = Date.now() - startTime;
+
+    logAiExecutionCost({
+      userId,
+      action: "carousel_engine_pro",
+      modelUsed: carousel.generationMeta.modelUsed || AI_MODEL_ROUTER.primaryModel,
+      durationMs,
+      retries: carousel.generationMeta.iterations > 1 ? 1 : 0,
+      fallbackUsed: false,
+      inputTokens: 1100,
+      outputTokens: 1800,
+      isTest: isAdminTest,
+      adminTestMode: isAdminTest
+    });
+
+    return res.json({
+      success: true,
+      carousel,
+      quotaUsed: quota.currentCount,
+      quotaMax: quota.maxLimit,
+      adminTestMode: isAdminTest || undefined
+    });
+  } catch (err: any) {
+    console.error("[Carousel Engine Generate Error]", err);
+    const aiErr = handleAiError(err);
+    return res.status(aiErr.status).json({ success: false, error: { code: aiErr.code, message: aiErr.message } });
+  }
+});
+
+// 14.3 Carousel Engine Regenerate Single Slide (PRO Entitlement)
+app.post("/api/carousel-engine/regenerate-slide", optionalAuth, async (req, res) => {
+  const userId = getAuthenticatedUserId(req, "guest_user");
+  const isAdminTest = isUserAdmin(req.user) || !process.env.NODE_ENV || process.env.NODE_ENV !== "production";
+
+  if (isAdminTest) {
+    logContentTestAudit(req.originalUrl || req.url || "/api/carousel-engine/regenerate-slide");
+  }
+
+  const entitlement = await checkUserEntitlement(userId, "contentAi", { isAdminTest });
+  if (!entitlement.allowed) {
+    return res.status(403).json({
+      success: false,
+      error: "PAYWALL_REQUIRED",
+      message: entitlement.reason || "O Carrossel Engine Pro é exclusivo do plano InstaScore PRO.",
+      paywallRequired: true
+    });
+  }
+
+  const { carousel, slideNumber, customInstruction } = req.body;
+  if (!carousel || typeof slideNumber !== "number") {
+    return res.status(400).json({ success: false, error: "INVALID_PARAMS", message: "carousel e slideNumber são obrigatórios." });
+  }
+
+  try {
+    const newSlide = await carouselEngineServer.regenerateSlide(carousel, slideNumber, customInstruction);
+    return res.json({ success: true, slide: newSlide });
+  } catch (err: any) {
+    console.error("[Carousel Engine Regenerate Slide Error]", err);
+    const aiErr = handleAiError(err);
+    return res.status(aiErr.status).json({ success: false, error: { code: aiErr.code, message: aiErr.message } });
+  }
+});
+
+// 14.4 Carousel Engine Feedback & Learning Loop
+app.post("/api/carousel-engine/feedback", optionalAuth, async (req, res) => {
+  const userId = getAuthenticatedUserId(req, "guest_user");
+  const { carousel, feedback, digitalTwin } = req.body;
+
+  if (!carousel || !feedback || !feedback.rating) {
+    return res.status(400).json({ success: false, error: "INVALID_FEEDBACK", message: "carousel e feedback com rating são obrigatórios." });
+  }
+
+  try {
+    const memory = userContentMemories.get(userId) || null;
+    const { updatedTwin, updatedMemory } = carouselEngineServer.processFeedback(
+      userId,
+      carousel,
+      feedback,
+      digitalTwin,
+      memory
+    );
+
+    userContentMemories.set(userId, updatedMemory);
+
+    return res.json({
+      success: true,
+      updatedTwin,
+      message: "Feedback registrado e incorporado ao aprendizado contínuo do seu perfil."
+    });
+  } catch (err: any) {
+    console.error("[Carousel Engine Feedback Error]", err);
+    return res.status(500).json({ success: false, error: "FEEDBACK_FAILED", message: err.message });
+  }
+});
+
+/**
+ * -------------------------------------------------------------
+ * INSTASCORE CONTENT PRODUCTION ENGINE PRO V14 API SUITE
+ * End-to-End Content Production for Carousel + Static Post
+ * -------------------------------------------------------------
+ */
+
+const contentProductionEngineServer = new ContentProductionEngineServer(async (params) => {
+  const result = await callGeminiWithRobustFallback({
+    contents: params.contents,
+    config: params.config
+  });
+  return { text: result.text, modelUsed: result.modelUsed };
+});
+
+// 14.P1 Prepare Master Strategic Brief for Any Format
+app.post("/api/content-production/brief", optionalAuth, async (req, res) => {
+  const userId = getAuthenticatedUserId(req, (req.body?.dna?.handle ? `user_${req.body.dna.handle}` : "guest_user"));
+  const maskedUid = userId.length > 8 ? `${userId.substring(0, 4)}...${userId.slice(-4)}` : userId;
+  const { format, dna, digitalTwin, objective, theme, themeMode, slideCount, visualTheme, customCta, strategicAngle } = req.body;
+
+  console.log(`[Production Pipeline] [brief_started] uid=${maskedUid} format=${format || "carousel"} objective=${objective || "auto"}`);
+
+  if (!dna) {
+    return res.status(400).json({ success: false, error: "INVALID_PARAMS", message: "dna é obrigatório." });
+  }
+
+  try {
+    const memory = userContentMemories.get(userId) || null;
+    const brief = contentProductionEngineServer.prepareBrief({
+      format: format || "carousel",
+      dna,
+      digitalTwin,
+      memory,
+      objective,
+      theme,
+      themeMode,
+      slideCount,
+      visualTheme,
+      customCta,
+      strategicAngle
+    });
+
+    console.log(`[Production Pipeline] [brief_created] uid=${maskedUid} briefId=${brief.id} pillar=${brief.primaryPillar} theme="${brief.theme?.substring(0, 40)}..."`);
+    return res.json({ success: true, brief });
+  } catch (err: any) {
+    console.error("[Content Production Brief Error]", err);
+    return res.status(500).json({ success: false, error: "BRIEF_FAILED", message: err.message });
+  }
+});
+
+// 14.P2 Generate End-to-End Strategic Carousel Pro
+app.post("/api/content-production/generate-carousel", optionalAuth, async (req, res) => {
+  const userId = getAuthenticatedUserId(req, (req.body?.brief?.contentDNA?.handle ? `user_${req.body.brief.contentDNA.handle}` : "guest_user"));
+  const maskedUid = userId.length > 8 ? `${userId.substring(0, 4)}...${userId.slice(-4)}` : userId;
+  const isAdminTest = isUserAdmin(req.user) || !process.env.NODE_ENV || process.env.NODE_ENV !== "production";
+
+  console.log(`[Production Pipeline] [production_started] uid=${maskedUid} format=carousel isTest=${isAdminTest}`);
+  console.log(`[Production Pipeline] [auth_validated] uid=${maskedUid}`);
+
+  if (isAdminTest) {
+    logContentTestAudit(req.originalUrl || req.url || "/api/content-production/generate-carousel");
+  }
+
+  const entitlement = await checkUserEntitlement(userId, "contentAi", { isAdminTest });
+  if (!entitlement.allowed) {
+    console.warn(`[Production Pipeline] [entitlement_rejected] uid=${maskedUid} reason=${entitlement.reason}`);
+    return res.status(403).json({
+      success: false,
+      error: "PAYWALL_REQUIRED",
+      message: entitlement.reason || "O Content Production Pro é exclusivo do plano InstaScore PRO.",
+      paywallRequired: true
+    });
+  }
+  console.log(`[Production Pipeline] [entitlement_validated] uid=${maskedUid} plan=${entitlement.plan}`);
+
+  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION", { isAdminTest });
+  if (!quota.allowed) {
+    console.warn(`[Production Pipeline] [quota_exceeded] uid=${maskedUid}`);
+    return res.status(429).json({ success: false, error: quota.errorCode, message: quota.message });
+  }
+
+  const { brief } = req.body;
+  if (!brief || !brief.contentDNA) {
+    return res.status(400).json({ success: false, error: "INVALID_BRIEF", message: "brief e brief.contentDNA são obrigatórios." });
+  }
+
+  try {
+    const startTime = Date.now();
+    console.log(`[Production Pipeline] [carousel_structure_started] slides=${brief.slideCount || 7} angle="${brief.strategicAngle}"`);
+    const carousel = await contentProductionEngineServer.generateCarousel(brief);
+    const durationMs = Date.now() - startTime;
+
+    console.log(`[Production Pipeline] [slide_copy_created] slideCount=${carousel.slides.length} headline="${carousel.coverHeadline.substring(0, 40)}..."`);
+    console.log(`[Production Pipeline] [quality_gate_completed] passed=${carousel.qualityReport?.passed} score=${carousel.qualityReport?.score}/100 iterations=${carousel.generationMeta.iterations}`);
+
+    logAiExecutionCost({
+      userId,
+      action: "carousel_production_pro",
+      modelUsed: carousel.generationMeta.modelUsed || AI_MODEL_ROUTER.primaryModel,
+      durationMs,
+      retries: 0,
+      fallbackUsed: false,
+      inputTokens: 1200,
+      outputTokens: 2000,
+      isTest: isAdminTest,
+      adminTestMode: isAdminTest
+    });
+
+    return res.json({
+      success: true,
+      carousel,
+      quotaUsed: quota.currentCount,
+      quotaMax: quota.maxLimit,
+      adminTestMode: isAdminTest || undefined
+    });
+  } catch (err: any) {
+    console.error("[Content Production Carousel Error]", err);
+    const aiErr = handleAiError(err);
+    return res.status(aiErr.status).json({ success: false, error: { code: aiErr.code, message: aiErr.message } });
+  }
+});
+
+// 14.P3 Generate End-to-End Strategic Static Post Pro
+app.post("/api/content-production/generate-post", optionalAuth, async (req, res) => {
+  const userId = getAuthenticatedUserId(req, (req.body?.brief?.contentDNA?.handle ? `user_${req.body.brief.contentDNA.handle}` : "guest_user"));
+  const maskedUid = userId.length > 8 ? `${userId.substring(0, 4)}...${userId.slice(-4)}` : userId;
+  const isAdminTest = isUserAdmin(req.user) || !process.env.NODE_ENV || process.env.NODE_ENV !== "production";
+
+  console.log(`[Production Pipeline] [production_started] uid=${maskedUid} format=static_post isTest=${isAdminTest}`);
+  console.log(`[Production Pipeline] [auth_validated] uid=${maskedUid}`);
+
+  if (isAdminTest) {
+    logContentTestAudit(req.originalUrl || req.url || "/api/content-production/generate-post");
+  }
+
+  const entitlement = await checkUserEntitlement(userId, "contentAi", { isAdminTest });
+  if (!entitlement.allowed) {
+    console.warn(`[Production Pipeline] [entitlement_rejected] uid=${maskedUid} reason=${entitlement.reason}`);
+    return res.status(403).json({
+      success: false,
+      error: "PAYWALL_REQUIRED",
+      message: entitlement.reason || "O Content Production Pro é exclusivo do plano InstaScore PRO.",
+      paywallRequired: true
+    });
+  }
+  console.log(`[Production Pipeline] [entitlement_validated] uid=${maskedUid} plan=${entitlement.plan}`);
+
+  const quota = await checkAndIncrementQuota(userId, "AI_GENERATION", { isAdminTest });
+  if (!quota.allowed) {
+    console.warn(`[Production Pipeline] [quota_exceeded] uid=${maskedUid}`);
+    return res.status(429).json({ success: false, error: quota.errorCode, message: quota.message });
+  }
+
+  const { brief } = req.body;
+  if (!brief || !brief.contentDNA) {
+    return res.status(400).json({ success: false, error: "INVALID_BRIEF", message: "brief e brief.contentDNA são obrigatórios." });
+  }
+
+  try {
+    const startTime = Date.now();
+    console.log(`[Production Pipeline] [static_post_started] pillar=${brief.primaryPillar} theme="${brief.theme?.substring(0, 40)}..."`);
+    const post = await contentProductionEngineServer.generateStaticPost(brief);
+    const durationMs = Date.now() - startTime;
+
+    console.log(`[Production Pipeline] [post_copy_created] headline="${post.headline.substring(0, 40)}..."`);
+    console.log(`[Production Pipeline] [quality_gate_completed] passed=${post.qualityReport?.passed} score=${post.qualityReport?.score}/100 iterations=${post.generationMeta.iterations}`);
+
+    logAiExecutionCost({
+      userId,
+      action: "static_post_production_pro",
+      modelUsed: post.generationMeta.modelUsed || AI_MODEL_ROUTER.primaryModel,
+      durationMs,
+      retries: 0,
+      fallbackUsed: false,
+      inputTokens: 900,
+      outputTokens: 1400,
+      isTest: isAdminTest,
+      adminTestMode: isAdminTest
+    });
+
+    return res.json({
+      success: true,
+      post,
+      quotaUsed: quota.currentCount,
+      quotaMax: quota.maxLimit,
+      adminTestMode: isAdminTest || undefined
+    });
+  } catch (err: any) {
+    console.error("[Content Production Static Post Error]", err);
+    const aiErr = handleAiError(err);
+    return res.status(aiErr.status).json({ success: false, error: { code: aiErr.code, message: aiErr.message } });
+  }
+});
+
+// 14.P4 Regenerate Single Slide
+app.post("/api/content-production/regenerate-slide", optionalAuth, async (req, res) => {
+  const userId = getAuthenticatedUserId(req, "guest_user");
+  const isAdminTest = isUserAdmin(req.user) || !process.env.NODE_ENV || process.env.NODE_ENV !== "production";
+
+  if (isAdminTest) {
+    logContentTestAudit(req.originalUrl || req.url || "/api/content-production/regenerate-slide");
+  }
+
+  const entitlement = await checkUserEntitlement(userId, "contentAi", { isAdminTest });
+  if (!entitlement.allowed) {
+    return res.status(403).json({
+      success: false,
+      error: "PAYWALL_REQUIRED",
+      message: entitlement.reason || "O Content Production Pro é exclusivo do plano InstaScore PRO.",
+      paywallRequired: true
+    });
+  }
+
+  const { carousel, slideNumber, customInstruction } = req.body;
+  if (!carousel || typeof slideNumber !== "number") {
+    return res.status(400).json({ success: false, error: "INVALID_PARAMS", message: "carousel e slideNumber são obrigatórios." });
+  }
+
+  try {
+    const slide = await contentProductionEngineServer.regenerateSlide(carousel, slideNumber, customInstruction);
+    return res.json({ success: true, slide });
+  } catch (err: any) {
+    console.error("[Content Production Regenerate Slide Error]", err);
+    const aiErr = handleAiError(err);
+    return res.status(aiErr.status).json({ success: false, error: { code: aiErr.code, message: aiErr.message } });
+  }
+});
+
+// 14.P5 Regenerate Static Post
+app.post("/api/content-production/regenerate-post", optionalAuth, async (req, res) => {
+  const userId = getAuthenticatedUserId(req, "guest_user");
+  const isAdminTest = isUserAdmin(req.user) || !process.env.NODE_ENV || process.env.NODE_ENV !== "production";
+
+  if (isAdminTest) {
+    logContentTestAudit(req.originalUrl || req.url || "/api/content-production/regenerate-post");
+  }
+
+  const entitlement = await checkUserEntitlement(userId, "contentAi", { isAdminTest });
+  if (!entitlement.allowed) {
+    return res.status(403).json({
+      success: false,
+      error: "PAYWALL_REQUIRED",
+      message: entitlement.reason || "O Content Production Pro é exclusivo do plano InstaScore PRO.",
+      paywallRequired: true
+    });
+  }
+
+  const { post, customInstruction } = req.body;
+  if (!post) {
+    return res.status(400).json({ success: false, error: "INVALID_PARAMS", message: "post é obrigatório." });
+  }
+
+  try {
+    const updatedPost = await contentProductionEngineServer.regeneratePost(post, customInstruction);
+    return res.json({ success: true, post: updatedPost });
+  } catch (err: any) {
+    console.error("[Content Production Regenerate Post Error]", err);
+    const aiErr = handleAiError(err);
+    return res.status(aiErr.status).json({ success: false, error: { code: aiErr.code, message: aiErr.message } });
+  }
+});
+
+// 14.P6 Feedback & Learning Loop for Content Production
+app.post("/api/content-production/feedback", optionalAuth, async (req, res) => {
+  const userId = getAuthenticatedUserId(req, "guest_user");
+  const { content, feedback, digitalTwin } = req.body;
+
+  if (!content || !feedback || !feedback.rating) {
+    return res.status(400).json({ success: false, error: "INVALID_FEEDBACK", message: "content e feedback com rating são obrigatórios." });
+  }
+
+  try {
+    const memory = userContentMemories.get(userId) || null;
+    const { updatedTwin, updatedMemory } = contentProductionEngineServer.processFeedback(
+      userId,
+      content,
+      feedback,
+      digitalTwin,
+      memory
+    );
+
+    userContentMemories.set(userId, updatedMemory);
+
+    return res.json({
+      success: true,
+      updatedTwin,
+      message: "Feedback registrado e incorporado ao aprendizado contínuo do seu perfil."
+    });
+  } catch (err: any) {
+    console.error("[Content Production Feedback Error]", err);
+    return res.status(500).json({ success: false, error: "FEEDBACK_FAILED", message: err.message });
+  }
 });
 
 /**
@@ -2650,6 +3270,8 @@ function checkRateLimit(ip: string): { allowed: boolean; remaining: number } {
 }
 
 app.post("/api/analyze", requireAuth, async (req, res) => {
+  const requestStartTime = Date.now();
+  const validationStart = Date.now();
   const clientIp = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "127.0.0.1";
   const userId = req.user!.uid;
 
@@ -2703,7 +3325,8 @@ app.post("/api/analyze", requireAuth, async (req, res) => {
   const [img1, img2, img3] = imgBatchResult.validatedImages;
 
   // 4. Atomic Quota Enforcement AFTER all cheap validations pass
-  const quotaCheck = await checkAndIncrementQuota(userId, "DIAGNOSIS");
+  const isAdminTest = isUserAdmin(req.user);
+  const quotaCheck = await checkAndIncrementQuota(userId, "DIAGNOSIS", { isAdminTest });
   if (!quotaCheck.allowed) {
     console.warn(`[InstaScore Quota] User ${userId} blocked: ${quotaCheck.errorCode}`);
     return res.status(403).json({
@@ -2716,8 +3339,10 @@ app.post("/api/analyze", requireAuth, async (req, res) => {
     });
   }
 
+  const validation_duration_ms = Date.now() - validationStart;
+
   // Safe sanitized logging (NEVER log base64 data, prompt text, or tokens)
-  console.log(`[InstaScore] Request validated: user=${userId}, ip=${clientIp}, imagesCount=${imgBatchResult.validatedImages.length}, totalSizeKb=${Math.round(imgBatchResult.totalSizeBytes / 1024)}`);
+  console.log(`[InstaScore] Request validated in ${validation_duration_ms}ms: user=${userId}, ip=${clientIp}, imagesCount=${imgBatchResult.validatedImages.length}, totalSizeKb=${Math.round(imgBatchResult.totalSizeBytes / 1024)}`);
 
   const apiKeyToCheck = process.env.GEMINI_API_KEY;
   if (!apiKeyToCheck) {
@@ -2775,7 +3400,6 @@ Por favor, analise as capturas e preencha todos os 25 critérios obrigatórios d
 
   // Unique request trace ID for observability
   const requestId = `req_${Date.now()}_${crypto.randomBytes(3).toString("hex")}`;
-  const requestStartTime = Date.now();
   const maskedUid = userId ? (userId.length > 8 ? `${userId.substring(0, 4)}...${userId.slice(-4)}` : userId) : "anonymous";
 
   // Client cancellation abort controller
@@ -2889,8 +3513,10 @@ Por favor, analise as capturas e preencha todos os 25 critérios obrigatórios d
   }
 
   // Deterministic Math Engine scoring calculation
+  const scoringStart = Date.now();
   const scoringResult = calculateScoring(evaluations, objective);
-  console.log(`[InstaScore Pipeline] [${requestId}] Math Engine score=${scoringResult.score}, coverage=${scoringResult.coverage}%`);
+  const scoring_math_duration_ms = Date.now() - scoringStart;
+  console.log(`[InstaScore Pipeline] [${requestId}] Math Engine score=${scoringResult.score}, coverage=${scoringResult.coverage}% (mathTime=${scoring_math_duration_ms}ms)`);
 
   // Data sufficiency check
   if (!parsedDiagnosis.metadata?.is_data_sufficient || scoringResult.coverage < 15) {
@@ -2915,6 +3541,7 @@ Por favor, analise as capturas e preencha todos os 25 critérios obrigatórios d
   }
 
   // Priority alignment - ensure tomorrow_action and recommended_actions follow math engine
+  const strategyStart = Date.now();
   const { getPrioritizedActions } = await import("./src/config/methodology");
   const prioritized = getPrioritizedActions(evaluations, objective);
   if (prioritized.length > 0) {
@@ -2945,6 +3572,10 @@ Por favor, analise as capturas e preencha todos os 25 critérios obrigatórios d
       });
     }
   }
+  const strategy_prioritization_duration_ms = Date.now() - strategyStart;
+
+  const total_duration_ms = Date.now() - requestStartTime;
+  const multimodal_ai_duration_ms = aiExecutionMeta?.durationMs || 0;
 
   // Complete Observability Metadata
   const diagnosticId = `diag_${Date.now()}_${crypto.randomBytes(3).toString("hex")}`;
@@ -2954,14 +3585,24 @@ Por favor, analise as capturas e preencha todos os 25 critérios obrigatórios d
     totalCalls: aiExecutionMeta?.totalCalls || 1,
     retries: aiExecutionMeta?.retries || 0,
     fallbackUsed: aiExecutionMeta?.fallbackUsed || false,
-    durationMs: aiExecutionMeta?.durationMs || 0,
+    durationMs: total_duration_ms,
     status: "success",
     validationStatus: "valid",
     coverage: scoringResult.coverage,
     score: scoringResult.score,
     methodologyVersion: parsedDiagnosis.methodology_version,
-    promptVersion: "1.0.0"
+    promptVersion: "1.0.0",
+    telemetry: {
+      total_duration_ms,
+      validation_duration_ms,
+      multimodal_ai_duration_ms,
+      scoring_math_duration_ms,
+      strategy_prioritization_duration_ms,
+      overhead_duration_ms: Math.max(0, total_duration_ms - (validation_duration_ms + multimodal_ai_duration_ms + scoring_math_duration_ms + strategy_prioritization_duration_ms))
+    }
   };
+
+  console.log(`[InstaScore Telemetry] [${requestId}] Total=${total_duration_ms}ms (val=${validation_duration_ms}ms, ai=${multimodal_ai_duration_ms}ms, math=${scoring_math_duration_ms}ms, strat=${strategy_prioritization_duration_ms}ms)`);
 
   // Log AI execution cost for Observability (Sanitized, No PII, No raw prompts)
   logAiExecutionCost({
@@ -2969,7 +3610,7 @@ Por favor, analise as capturas e preencha todos os 25 critérios obrigatórios d
     diagnosticId,
     action: "diagnosis_multimodal",
     modelUsed: aiExecutionMeta?.modelUsed || AI_MODEL_ROUTER.primaryModel,
-    durationMs: aiExecutionMeta?.durationMs || 0,
+    durationMs: multimodal_ai_duration_ms,
     retries: aiExecutionMeta?.retries || 0,
     fallbackUsed: aiExecutionMeta?.fallbackUsed || false,
     inputTokens: 2400,

@@ -94,6 +94,24 @@ export function handleAiError(err: any): StructuredAiError {
     };
   }
 
+  if (
+    errCode === 503 ||
+    errCode === "UNAVAILABLE" ||
+    errMsg.includes("503") ||
+    errMsg.includes("UNAVAILABLE") ||
+    errMsg.includes("high demand") ||
+    errMsg.includes("spikes in demand") ||
+    errMsg.includes("overloaded") ||
+    errMsg.includes("temporarily") ||
+    errMsg.includes("try again later")
+  ) {
+    return {
+      status: 503,
+      code: "AI_HIGH_DEMAND",
+      message: "O modelo de IA está enfrentando alta demanda temporária. O sistema tentou modelos alternativos automaticamente. Por favor, tente novamente em instantes."
+    };
+  }
+
   if (errCode === 404 || errMsg.includes("is not found") || errMsg.includes("NOT_FOUND")) {
     return {
       status: 502,

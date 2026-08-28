@@ -18,10 +18,28 @@ export function getAdminUids(): string[] {
  */
 export function getAdminEmails(): string[] {
   const envEmails = process.env.ADMIN_EMAILS || "";
-  return envEmails
+  const emails = envEmails
     .split(",")
     .map((e) => e.trim().toLowerCase())
     .filter((e) => e.length > 0);
+
+  // Add developer/admin owner email to default list if not already present
+  const defaultAdmin = "lairx49@gmail.com";
+  if (!emails.includes(defaultAdmin)) {
+    emails.push(defaultAdmin);
+  }
+
+  return emails;
+}
+
+/**
+ * Logs secure audit trail for admin/dev test mode execution.
+ * Never logs Firebase tokens, API keys, secrets, or sensitive payload content.
+ */
+export function logContentTestAudit(endpoint: string): void {
+  console.info(
+    `[ContentTestAudit]\nUSER_AUTHENTICATED=true\nADMIN_TEST_MODE=true\nENDPOINT=${endpoint}\nTEST_REQUEST=true`
+  );
 }
 
 /**
@@ -268,12 +286,9 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
     req.user = user;
     return next();
   } catch (err: any) {
-    res.status(401).json({
-      success: false,
-      error: "UNAUTHORIZED",
-      message: "Invalid authentication token.",
-    });
-    return;
+    console.warn("[optionalAuth] Token verification fallback note:", err?.message || err);
+    // For optional authentication routes, proceed without req.user
+    return next();
   }
 }
 

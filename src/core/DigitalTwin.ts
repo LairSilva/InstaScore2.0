@@ -174,7 +174,8 @@ export function createDefaultDigitalTwin(
         carousel: 0,
         reel: 0,
         post: 0,
-        story: 0
+        story: 0,
+        static_post: 0
       },
       themesUsed: [],
       ctasUsed: [],

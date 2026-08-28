@@ -124,6 +124,8 @@ export interface AiLogRecord {
   outputTokens: number;
   estimatedCostUsd: number;
   estimatedCostBrl: number;
+  isTest?: boolean;
+  adminTestMode?: boolean;
   timestamp: number;
   createdAt: number;
   retentionUntil?: number;
@@ -580,12 +582,26 @@ export async function getUsage(userId: string): Promise<UsageRecord> {
 
 /**
  * Verifies if a user has access to a specific entitlement.
+ * When options.isAdminTest is true, grants verified admin/dev access for QA testing without mutating DB subscriptions.
  */
-export async function checkUserEntitlement(userId: string, entitlement: EntitlementKey): Promise<{
+export async function checkUserEntitlement(
+  userId: string,
+  entitlement: EntitlementKey,
+  options?: { isAdminTest?: boolean }
+): Promise<{
   allowed: boolean;
   plan: PlanType;
   reason?: string;
+  adminTestMode?: boolean;
 }> {
+  if (options?.isAdminTest) {
+    return {
+      allowed: true,
+      plan: 'PRO',
+      adminTestMode: true
+    };
+  }
+
   try {
     const sub = await getSubscription(userId);
     const isAllowed = hasEntitlement(sub.plan, entitlement);
@@ -618,10 +634,12 @@ export async function checkUserEntitlement(userId: string, entitlement: Entitlem
 /**
  * Checks and increments quotas using an ATOMIC TRANSACTION.
  * Guarantees that two concurrent requests cannot exceed the quota limit.
+ * When options.isAdminTest is true, permits QA test executions without consuming real user quotas.
  */
 export async function checkAndIncrementQuota(
   userId: string,
-  actionType: 'DIAGNOSIS' | 'AI_GENERATION' | 'IMAGE_GENERATION' | 'VIDEO_GENERATION'
+  actionType: 'DIAGNOSIS' | 'AI_GENERATION' | 'IMAGE_GENERATION' | 'VIDEO_GENERATION',
+  options?: { isAdminTest?: boolean }
 ): Promise<{
   allowed: boolean;
   plan: PlanType;
@@ -629,7 +647,18 @@ export async function checkAndIncrementQuota(
   maxLimit: number;
   errorCode?: string;
   message?: string;
+  adminTestMode?: boolean;
 }> {
+  if (options?.isAdminTest) {
+    return {
+      allowed: true,
+      plan: 'FREE',
+      currentCount: 0,
+      maxLimit: 9999,
+      adminTestMode: true
+    };
+  }
+
   if (!userId) userId = 'anonymous';
   const now = Date.now();
   const oneDayMs = 24 * 60 * 60 * 1000;
@@ -2654,6 +2683,8 @@ export async function logAiExecutionCost(data: {
   fallbackUsed: boolean;
   inputTokens?: number;
   outputTokens?: number;
+  isTest?: boolean;
+  adminTestMode?: boolean;
 }): Promise<AiLogRecord> {
   const inTokens = data.inputTokens || 2200;
   const outTokens = data.outputTokens || 1800;
@@ -2661,6 +2692,7 @@ export async function logAiExecutionCost(data: {
   const now = Date.now();
   const logId = `log_${now}_${crypto.randomBytes(3).toString('hex')}`;
   const isProd = isProductionEnvironment();
+  const isTest = data.isTest === true || data.adminTestMode === true;
 
   const logRecord: AiLogRecord = {
     id: logId,
@@ -2675,6 +2707,8 @@ export async function logAiExecutionCost(data: {
     outputTokens: outTokens,
     estimatedCostUsd: costUsd,
     estimatedCostBrl: costBrl,
+    isTest,
+    adminTestMode: isTest,
     timestamp: now,
     createdAt: now,
     retentionUntil: calculateRetentionUntil(RETENTION_POLICIES.AI_LOGS_DAYS),
@@ -2833,9 +2867,13 @@ export async function getAdminMetrics() {
   const proUsers = allSubs.filter(s => s.plan === 'PRO' && s.status === 'active').length;
   const freeUsers = totalUsers - proUsers;
 
-  const totalCostUsd = allAiLogs.reduce((acc, l) => acc + (l.estimatedCostUsd || 0), 0);
-  const totalCostBrl = allAiLogs.reduce((acc, l) => acc + (l.estimatedCostBrl || 0), 0);
-  const totalAiCalls = allAiLogs.length;
+  const productionAiLogs = allAiLogs.filter(l => !l.isTest && !l.adminTestMode);
+  const testAiLogs = allAiLogs.filter(l => l.isTest || l.adminTestMode);
+
+  const totalCostUsd = productionAiLogs.reduce((acc, l) => acc + (l.estimatedCostUsd || 0), 0);
+  const totalCostBrl = productionAiLogs.reduce((acc, l) => acc + (l.estimatedCostBrl || 0), 0);
+  const totalAiCalls = productionAiLogs.length;
+  const totalTestAiCalls = testAiLogs.length;
 
   const totalFeedbacks = feedbacks.length;
   const usefulFeedbacks = feedbacks.filter(f => f.rating === 'useful').length;

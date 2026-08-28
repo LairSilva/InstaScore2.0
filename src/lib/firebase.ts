@@ -56,7 +56,7 @@ export async function ensureAuthUser(): Promise<string | null> {
   }
 }
 
-export async function getAuthIdToken(forceRefresh: boolean = false): Promise<string> {
+export async function getAuthIdToken(forceRefresh: boolean = false): Promise<string | null> {
   let user = auth.currentUser;
   if (!user) {
     user = await getOrEnsureAuthUser();
@@ -66,13 +66,18 @@ export async function getAuthIdToken(forceRefresh: boolean = false): Promise<str
       const anonCred = await signInAnonymously(auth);
       user = anonCred.user;
     } catch (e) {
-      console.warn('[Firebase Auth] Immediate anonymous sign-in attempt failed:', e);
+      // Anonymous sign-in may not be enabled; continue gracefully
     }
   }
   if (!user) {
-    throw new Error("Usuário não autenticado no Firebase. Por favor, conecte-se com o Google para continuar.");
+    return null;
   }
-  return await user.getIdToken(forceRefresh);
+  try {
+    return await user.getIdToken(forceRefresh);
+  } catch (e) {
+    console.warn('[Firebase Auth] Could not retrieve ID token:', e);
+    return null;
+  }
 }
 
 export enum OperationType {
